@@ -17,6 +17,7 @@ oracle/build.sh /path/to/smsim.2023-03-03_version
 oracle/run_example.sh /path/to/smsim.2023-03-03_version single
 oracle/run_example.sh /path/to/smsim.2023-03-03_version double
 oracle/dump_factors.sh /path/to/smsim.2023-03-03_version double
+oracle/make_golden.sh /path/to/smsim.2023-03-03_version double
 ```
 
 `build.sh` compiles `tmrsk_loop_rv_drvr`, `fmrsk_loop_fas_drvr`,
@@ -70,6 +71,27 @@ the frequency-dependent Q of Stafford et al. (`fr1 < 0`) and the standard
 two-segment Q. Other source models and spreading options need synthetic
 `.params` files, which a later step will add.
 
+## Golden files (`make_golden.sh`)
+
+`make_golden.sh` writes the golden files in `tests/golden/<build>/` (see
+`tests/golden/README.md` for what they contain). For every shipped `.params`
+file it runs the RV, FAS and TD loop programs, using the control files in
+`inputs/`, and `factor_dump` on a smaller grid than `dump_factors.sh`. The
+double build takes about 7 minutes with gfortran 13.3, almost all of it in
+the time-domain runs; `SKIP_TD=1` leaves those out.
+
+The control files in `inputs/` are copies of the shipped ones in
+`control_files/` with only the run settings changed: the magnitudes,
+distances, periods and frequencies, kappa_0 and stress taken from the params
+file, and the full set of output columns. `make_golden.sh` fills in the
+params and output file names (`@PARAMS@`, `@COL@`). The shipped RV and TD
+control files name a params file (`100b_1c_raoof_k_0.04.params`) that is not
+in the distribution, so they cannot be run as they are.
+
+The outputs are reproducible: running the script twice with the same build
+gives identical files, including the time-domain results, because SMSIM
+seeds its random numbers from the params file.
+
 ## Patches
 
 Each patch is a unified diff against the source with LF line endings, and
@@ -111,10 +133,7 @@ exact equality.
 
 ## Not yet done
 
-- The FAS and TD drivers are compiled but have not been run against
-  reference outputs.
-- Golden factor files under `tests/golden/`, and synthetic `.params` files
-  for the source models and spreading options that the shipped files do not
-  use.
+- Synthetic `.params` files for the source models and spreading options
+  that the shipped files do not use.
 - The oscillator response (`harmoscf`), which `factor_dump` leaves out
   because it prints the Fourier spectrum without an instrument.
