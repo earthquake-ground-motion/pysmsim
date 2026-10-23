@@ -77,7 +77,11 @@ Units are cgs (cm, s, g/cm³), with distances in km and g = 981 cm/s².
    - `q()` caches values on its first call (`firstcall_q`);
    - `wind_exp` recomputes only when `new_mr` is set;
    - `get_npts_for_td_calcs` overwrites `tshift` inside loops;
-   - failures return sentinels (-999.9, -9.99) instead of raising errors.
+   - failures return sentinels (-999.9, -9.99) instead of raising errors;
+   - `get_params` silently rounds the low-cut `nslope` down to a multiple of
+     4 (pysmsim rejects other values);
+   - source models 2, 11 and 12 always use the `log_linear` stress formula,
+     whatever stress model the params file names.
 3. **One TOML input file per run.** It replaces the `.params`, `.ctl` and
    `.pars` files and is read with `tomllib`.
    - Settings are named keys, not positions.
