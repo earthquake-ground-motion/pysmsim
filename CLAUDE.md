@@ -208,10 +208,12 @@ physics.
 
 - `src/pysmsim/`: the package (`io/`, `spectrum/`, `rv/`, `td/`, `drivers/`).
 - `src/pysmsim/data/`: bundled tables (`bt15/`, `crustal_amps/`, `presets/`).
-- `tests/unit/` and `tests/golden/`: unit tests and Fortran comparisons.
+- `tests/unit/` and `tests/golden/`: unit tests and Fortran comparisons
+  (`tests/golden/README.md` describes the golden files).
 - `oracle/`:
   - `shims/`: the gfortran date/time replacement;
-  - `inputs/`: patched copies of the `.params` and `.ctl` files;
+  - `inputs/`: the control files for the golden runs;
+  - `programs/`: test-only Fortran programs, such as `factor_dump`;
   - `build/`: build output, which Git ignores.
 - `notebooks/`: exploration notebooks.
 - `examples/`: example run TOML files.
