@@ -16,10 +16,11 @@ patched there.
 oracle/build.sh /path/to/smsim.2023-03-03_version
 oracle/run_example.sh /path/to/smsim.2023-03-03_version single
 oracle/run_example.sh /path/to/smsim.2023-03-03_version double
+oracle/dump_factors.sh /path/to/smsim.2023-03-03_version double
 ```
 
-`build.sh` compiles `tmrsk_loop_rv_drvr`, `fmrsk_loop_fas_drvr` and
-`tmrsk_loop_td_drvr` twice:
+`build.sh` compiles `tmrsk_loop_rv_drvr`, `fmrsk_loop_fas_drvr`,
+`tmrsk_loop_td_drvr` and the test-only `factor_dump` (see below) twice:
 
 - `oracle/build/bin/single/`: the code as written, which is mostly single
   precision;
@@ -33,6 +34,41 @@ the patches used. Override the compiler with `FC` and the flags with `FFLAGS`.
 build (`single` by default) and compares the output with the reference `.col`
 file. The example inputs need three adjustments for the 2023 program; the
 script makes them in its run folder, and its header explains each one.
+
+## Spectral factors (`factor_dump`)
+
+`programs/factor_dump.for` is a test-only program written for pysmsim; it is
+not part of SMSIM. It reads a `.params` file, sets up one magnitude and
+rupture distance the same way as `fmrsk_loop_fas_drvr`, and prints every
+factor of the Fourier spectrum computed by `spect_amp` on a log-spaced
+frequency grid. It calls the unmodified SMSIM subroutines, which it includes
+from `smsim_subs_for_rv_programs.for` and `smsim_util_subs.for`.
+
+```bash
+oracle/build/bin/double/factor_dump PARAMS M RRUP OUTFILE [NFREQ FMIN FMAX]
+```
+
+The default grid is 201 points from 0.01 to 100 Hz. The output starts with
+comment lines giving the scenario and the frequency-independent terms (M0,
+stress, fa, fb, Rps, the finite-fault factor, `const`, the geometrical
+spreading, kappa and the source and path durations). Then one row per
+frequency gives `f`, `source`, `gsprd`, `q`, `q_path`, `kappa`, `fmax`,
+`dimin`, `site`, `lowcut`, `highcut`, `product`, `fds` and `fas`; the
+program header defines each column. `product` multiplies the factors
+together and `fds` is `spect_amp` itself, so their agreement shows that no
+factor is missing.
+
+`dump_factors.sh` runs `factor_dump` for every shipped `.params` file at
+M 4, 6 and 8 and Rrup 5, 20 and 100 km (override with `MAGS` and `RRUPS`),
+writing 54 files to `oracle/build/factors/<build>/`. It fails if `product`
+and `fds` differ by more than `TOL` (1e-12 for the double build, 1e-5 for
+the single build). With gfortran 13.3 the largest differences are 1.1e-15
+(double) and 2.2e-7 (single).
+
+The shipped `.params` files cover source model 1, spreading options 0 and 7,
+the frequency-dependent Q of Stafford et al. (`fr1 < 0`) and the standard
+two-segment Q. Other source models and spreading options need synthetic
+`.params` files, which a later step will add.
 
 ## Patches
 
@@ -77,5 +113,8 @@ exact equality.
 
 - The FAS and TD drivers are compiled but have not been run against
   reference outputs.
-- The program that prints the individual spectral factors for the layer-1
-  golden tests.
+- Golden factor files under `tests/golden/`, and synthetic `.params` files
+  for the source models and spreading options that the shipped files do not
+  use.
+- The oscillator response (`harmoscf`), which `factor_dump` leaves out
+  because it prints the Fourier spectrum without an instrument.
