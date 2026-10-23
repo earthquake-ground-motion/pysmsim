@@ -205,3 +205,13 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Markdown copies of the reference papers (local only, never commit)
+papers/
+
+# Fortran oracle build output (golden files live in tests/golden)
+oracle/build/
+
+# Mac/Vim
+*.swp
+.DS_Store
