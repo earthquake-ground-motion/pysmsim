@@ -1,0 +1,15 @@
+Remove a trailing comma before the closing parenthesis of a format string.
+Lahey and Intel Fortran accept it; gfortran rejects it as "Missing item in format string".
+Output layout is unchanged.
+
+--- a/tmrsk_loop_rv_drvr.for
++++ b/tmrsk_loop_rv_drvr.for
+@@ -749,7 +749,7 @@
+      :      5x,a,
+      :      1x,a,
+      :      3x,a,
+-     :      1x,a, 1x,a,
++     :      1x,a, 1x,a
+      :                             )')
+      :    'damp', 'T:'//tag_out(1:4), 'F:'//tag_out(1:4), 
+      :    'M', 'Rjb', 'h', 'Rrup', 'F_FF', 'Rps', 

@@ -1,0 +1,39 @@
+Double-precision build only: change explicit REAL(4)/REAL*4 declarations to plain REAL,
+so that -fdefault-real-8 promotes them like the rest of the code.
+
+--- a/td_subs.for
++++ b/td_subs.for
+@@ -2780,10 +2780,10 @@
+       function q(f) 
+ 
+       logical, save ::  firstcall_q = .true.
+-      real(4), save ::  qt1, qt2, st
++      real, save ::  qt1, qt2, st
+       
+       real, intent(in) :: f
+-      real(4) :: q      
++      real :: q
+       
+       include 'smsim.fi'
+ 
+@@ -4761,9 +4761,9 @@
+ 
+       implicit real*8 (a - h, o - z)
+ 
+-      real*4 acc(*)
++      real acc(*)
+ 
+-      real*4 omega, damp, dt, rd, d0, v0
++      real omega, damp, dt, rd, d0, v0
+  
+       omt=dble(omega)*dble(dt)
+       d2=1.d0-dble(damp)*dble(damp)
+@@ -4861,7 +4861,7 @@
+ 
+       implicit none
+ 
+-      real(4) :: acc(*), omega, damp, dt, 
++      real :: acc(*), omega, damp, dt, 
+      :       rd, rv, aa, d0, v0 
+       
+       integer :: na, kg, kug, npr
