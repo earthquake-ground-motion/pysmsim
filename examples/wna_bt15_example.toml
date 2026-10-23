@@ -1,0 +1,130 @@
+# The SMSIM example run (example.tmrsk_loop_rv_drvr in the 2023-03-03
+# distribution) as a pysmsim run file.
+#
+# Model parameters: wna.scf.bt15acr_fff.rea99_atten.bt14_dp.bj97gr760_amps.
+#   k0.035.bt15w_drms.params (single-corner source, BT15 finite-fault factor,
+#   Raoof et al. 1999 attenuation, BT14 WNA path duration, Boore 2016
+#   BJ97gr760 amplification, kappa_0 0.035 s, BT15 WNA oscillator correction).
+# Scenarios: tmrsk_loop_rv_drvr.ctl from the example (M 4, 6, 8; Rjb 10 km;
+#   kappa_0 0.02 and 0.05 s; stress 100 bars; 200 periods from 0.01 to 100 s
+#   plus PGA and PGV; CY14 Ztor for Rjb to Rrup).
+
+schema_version = 1
+title = "Western North America params"
+
+[medium]
+density = 2.72         # g/cm^3
+shear_velocity = 3.5   # km/s
+partition = 0.707
+radiation = 0.55
+free_surface = 2.0
+
+[source]
+model = "single_corner"
+pf_a = 2.0
+pd_a = 1.0
+duration_weight_fa = 0.5
+duration_weight_fb = 0.5
+
+[source.stress]
+model = "log_linear"
+stress_ref = 250.0     # bars (replaced by scenarios.stress below)
+dlog10_stress_dm = 0.0
+magnitude_ref = 6.5
+
+[finite_fault]         # BT15 for active crustal regions
+model = "two_lines_smoothed"
+combination = "quadrature"
+c1 = -1.72
+c2 = 0.43
+c3 = -0.405
+c4 = 0.235
+delta_m = 2.0
+
+[spreading]
+model = "hinged"
+r_ref = 1.0
+segments = [
+    { r_start = 1.0, a = -1.0, b = 0.0, m_ref = 6.5 },
+    { r_start = 40.0, a = -0.5, b = 0.0, m_ref = 6.5 },
+]
+
+[q]                    # Raoof et al. (1999)
+model = "piecewise"
+fr1 = 1.0
+qr1 = 180.0
+s1 = 0.45
+ft1 = 1.0
+ft2 = 1.0
+fr2 = 1.0
+qr2 = 180.0
+s2 = 0.45
+c_q = 3.5
+
+[path_duration]        # Boore and Thompson (2014), WNA
+distances = [0.0, 7.0, 45.0, 125.0, 175.0, 270.0]
+durations = [0.0, 2.4, 8.4, 10.9, 17.4, 34.2]
+slope_beyond = 0.156
+
+[site]                 # BJ97gr760, Boore (2016)
+amp_frequencies = [
+    0.010, 0.015, 0.021, 0.031, 0.045, 0.065, 0.095, 0.138, 0.200, 0.291,
+    0.423, 0.615, 0.894, 1.301, 1.892, 2.751, 4.000, 5.817, 8.459, 12.301,
+    17.889, 26.014, 37.830, 55.012, 80.000,
+]
+amplifications = [
+    1.00, 1.01, 1.02, 1.02, 1.04, 1.06, 1.09, 1.13, 1.18, 1.25,
+    1.32, 1.41, 1.51, 1.64, 1.80, 1.99, 2.18, 2.38, 2.56, 2.75,
+    2.95, 3.17, 3.42, 3.68, 3.96,
+]
+kappa0 = 0.035         # s (replaced by scenarios.kappa0 below)
+dkappa_dmag = 0.0
+kappa_magnitude_ref = 0.0
+fmax = 0.0
+
+[filters.low_cut]
+fcut = 0.0             # no low-cut filter
+order = 4
+
+[filters.high_cut]
+model = "none"
+f1 = 25.0
+f2 = 50.0
+eta = 1.0
+
+[rv]
+zup = 10.0
+eps_int = 1.0e-5
+amp_cutoff = 1.0e-3
+osc_correction = "bt15_wna"
+
+[td]
+window = "exponential"
+taper = 0.05
+eps_w = 0.2
+eta_w = 0.05
+f_tb2te = 2.12
+f_te_xtnd = 1.0
+dur_fctr = 1.3
+dt = 0.005
+tshift = 60.0
+seed = 123
+nsims = 800
+noise = "gaussian"
+
+[scenarios]
+magnitudes = { start = 4.0, stop = 8.0, step = 2.0 }
+distances = [10.0]
+distance_metric = "rjb"
+rjb_to_rrup = "cy14_ztor"
+mechanism = "strike_slip"
+periods = { start = 0.01, stop = 100.0, count = 200 }
+pga = true
+pgv = true
+damping = 0.05
+kappa0 = [0.02, 0.05]
+stress = [100.0]
+
+[output]
+path = "wna_bt15_example.csv"
+format = "csv"
