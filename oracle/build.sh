@@ -13,7 +13,9 @@
 #           -fdefault-real-8 -fdefault-double-8 so that every REAL is 8 bytes;
 #           binaries in oracle/build/bin/double/
 #
-# Each patch explains why it is needed in its header.
+# Each patch explains why it is needed in its header. The test-only programs
+# in oracle/programs/ (written for pysmsim, not part of SMSIM) are copied in
+# beside the source and built in both precisions too.
 #
 # Environment variables:
 #   FC      Fortran compiler (default: gfortran)
@@ -32,8 +34,10 @@ BUILD_DIR="$ORACLE_DIR/build"
 FC=${FC:-gfortran}
 FFLAGS=${FFLAGS:--O2}
 
-# Programs built for the golden tests
+# SMSIM programs built for the golden tests
 PROGRAMS="tmrsk_loop_rv_drvr fmrsk_loop_fas_drvr tmrsk_loop_td_drvr"
+# Test-only programs from oracle/programs/
+TEST_PROGRAMS="factor_dump"
 
 if [ ! -d "$SMSIM_DIR/source_code" ]; then
     echo "error: $SMSIM_DIR/source_code not found" >&2
@@ -72,10 +76,13 @@ build() {
             applied="$applied $patch_dir/$(basename "$p")"
         done
     done
+    for prog in $TEST_PROGRAMS; do
+        cp "$ORACLE_DIR/programs/$prog.for" "$src_dir/"
+    done
 
     # The drivers pull in their subroutines with include statements, so
     # each program is a single compilation unit.
-    for prog in $PROGRAMS; do
+    for prog in $PROGRAMS $TEST_PROGRAMS; do
         echo "Compiling $prog"
         (cd "$src_dir" && "$FC" $FFLAGS $extra_flags -o "$bin_dir/$prog" "$prog.for")
     done
@@ -89,6 +96,7 @@ build() {
         echo "fflags: $FFLAGS $extra_flags"
         echo "platform: $(uname -s) $(uname -m)"
         echo "patches:$applied"
+        echo "test programs: $TEST_PROGRAMS"
     } > "$bin_dir/BUILD_INFO.txt"
     cat "$bin_dir/BUILD_INFO.txt"
 }
