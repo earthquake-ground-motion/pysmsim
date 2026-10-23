@@ -160,7 +160,7 @@ pyarrow. Dev dependencies: pytest, ruff, mypy, hypothesis.
 
 | Phase | Work | Gate |
 | --- | --- | --- |
-| 0 | Fortran oracle, golden files, repository set-up | Built RV binary reproduces the example `.col` to its printed digits |
+| 0 | Fortran oracle (single and double builds), golden files, repository set-up | Built RV binary reproduces the example `.col` within 2e-3 max relative difference (decided by the owner; the shipped `.col` itself carries single-precision rounding of that size) |
 | 1 | Dataclasses, TOML schema and converter, spectrum modules, FAS loop | Factors and FAS within 1e-4 |
 | 2 | RV: moments, peak factors, `osc_crrctn` 0-5, RV loop, CLI → release 0.1 | PSA within 1e-3 on the example and all params files |
 | 3 | TD: noise, windows, `acc_ts`, oscillator, Arias, TD loop | Injected-noise trace within 1e-5; means within 3 standard errors |

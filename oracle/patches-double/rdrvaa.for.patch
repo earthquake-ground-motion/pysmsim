@@ -1,0 +1,14 @@
+Double-precision build only: change explicit REAL(4)/REAL*4 declarations to plain REAL,
+so that -fdefault-real-8 promotes them like the rest of the code.
+
+--- a/rdrvaa.for
++++ b/rdrvaa.for
+@@ -37,7 +37,7 @@
+ !        04/28/15 - Replaced comment characters * or C with ! (The Fortran 95 standard)
+ !        05/16/15 - Use Implicit None and replace real*4 and double precision with modern equivalents
+ 
+-      real(4) :: acc(*), omega, damp, dt, rd, rv, aa, d0, v0
++      real :: acc(*), omega, damp, dt, rd, rv, aa, d0, v0
+       
+       real(8) :: d2, bom, d3, omd, om2, c1, omt, omdt, c2, c3, c4, ss, 
+      :           cc, bomt, ee, s1, s2, s3, a11, a12, a21, a22,
