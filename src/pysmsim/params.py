@@ -5,9 +5,11 @@ Each class here holds one group of settings from an SMSIM ``.params`` file
 dataclasses: they hold settings only, never values derived from a magnitude
 or distance, so one ``Params`` object can be shared by every scenario.
 
-Options that are integer codes in the Fortran are string enums here (for
-example ``SourceModel.SINGLE_CORNER`` for source number 1); each enum lists
-the Fortran code it replaces. Units follow SMSIM: density in g/cm^3, shear
+Options are chosen by name. The source spectrum is one of the classes in
+:mod:`pysmsim.spectrum.source` (for example
+:class:`~pysmsim.spectrum.source.SingleCorner`), each holding only its own
+parameters; the other options are string enums, each listing the Fortran
+code it replaces. Units follow SMSIM: density in g/cm^3, shear
 velocity in km/s, distance in km, stress in bars, frequency in Hz.
 
 The objects can be built directly, for example in a notebook::
@@ -23,6 +25,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 from itertools import pairwise
+
+from pysmsim.spectrum.source import SourceSpectrum
 
 __all__ = [
     "Filters",
@@ -41,13 +45,9 @@ __all__ = [
     "RVConfig",
     "RpsCombination",
     "Site",
-    "Source",
-    "SourceModel",
     "Spreading",
     "SpreadingModel",
     "SpreadingSegment",
-    "Stress",
-    "StressModel",
     "TDConfig",
     "WindowShape",
 ]
@@ -93,126 +93,6 @@ class Medium:
     def __post_init__(self) -> None:
         if self.density <= 0 or self.shear_velocity <= 0:
             raise ValueError("density and shear_velocity must be positive")
-
-
-class SourceModel(StrEnum):
-    """Source spectral shape (Fortran ``numsource``; Boore, 2003, Table 2)."""
-
-    SINGLE_CORNER = "single_corner"
-    """1: single corner frequency, S = 1/(1+(f/fa)**pf_a)**pd_a."""
-    JOYNER_1984 = "joyner_1984"
-    """2: Joyner (1984), BSSA 74, 1167-1188."""
-    ATKINSON_1993 = "atkinson_1993"
-    """3: Atkinson (1993), BSSA 83, 1778-1798."""
-    ATKINSON_SILVA_1997 = "atkinson_silva_1997"
-    """4: Atkinson and Silva (1997), BSSA 87, 97-113."""
-    HADDON_1996 = "haddon_1996"
-    """5: Haddon (1996), BSSA 86, 1300-1313."""
-    ATKINSON_BOORE_1998_CALIFORNIA = "atkinson_boore_1998_california"
-    """6: Atkinson and Boore (1998), BSSA 88, 917-934, California model."""
-    BOATWRIGHT_CHOY = "boatwright_choy"
-    """7: Boatwright and Choy, as used by Boore and Atkinson (1989)."""
-    JOYNER_ENA = "joyner_ena"
-    """8: Joyner's ENA two-corner model for the SSHAC workshop."""
-    ATKINSON_SILVA_2000 = "atkinson_silva_2000"
-    """9: Atkinson and Silva (2000), BSSA 90, 255-274."""
-    ATKINSON_2005 = "atkinson_2005"
-    """10: Atkinson (2005)."""
-    TWO_CORNER_MULTIPLICATIVE = "two_corner_multiplicative"
-    """11: generalised multiplicative two-corner model (Boore et al., 2014)."""
-    TWO_CORNER_ADDITIVE = "two_corner_additive"
-    """12: generalised additive two-corner model (Boore et al., 2014)."""
-    JI_ARCHULETA_2020 = "ji_archuleta_2020"
-    """13: Ji and Archuleta (2020) model JA19_2S."""
-
-
-class StressModel(StrEnum):
-    """Magnitude dependence of the stress parameter (Fortran ``istress_model``)."""
-
-    LOG_LINEAR = "log_linear"
-    """1: stress = stress_ref * 10**(dlog10_stress_dm * (M - magnitude_ref))."""
-    HOERL = "hoerl"
-    """2: stress = c1 * M**c2 * exp(c3 * M) (Hoerl's equation)."""
-    STAFFORD_2022 = "stafford_2022"
-    """3: ln(stress) = c1 + c2*min(M - 5, 0) (Stafford et al., 2022; the
-    Ztor term is zero in SMSIM)."""
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class Stress:
-    """Stress parameter as a function of magnitude.
-
-    Fortran: ``istress_model, scoeff01, ..., scoeff05``. Used to compute the
-    corner frequencies of source models 1, 2, 11 and 12; ignored by the
-    others, whose corner frequencies are fixed functions of magnitude.
-
-    Parameters
-    ----------
-    model : StressModel
-        The functional form.
-    stress_ref : float
-        ``log_linear`` only: stress (bars) at ``magnitude_ref`` (``stressc``).
-    dlog10_stress_dm : float
-        ``log_linear`` only: slope of log10(stress) with magnitude (``dlsdm``).
-    magnitude_ref : float
-        ``log_linear`` only: reference magnitude (``amagc``). Also the
-        magnitude above which the Joyner (1984) source changes scaling.
-    coefficients : tuple of float
-        ``hoerl`` and ``stafford_2022`` only: the coefficients
-        (``scoeff01``, ``scoeff02``, ...).
-    """
-
-    model: StressModel = StressModel.LOG_LINEAR
-    stress_ref: float = 0.0
-    dlog10_stress_dm: float = 0.0
-    magnitude_ref: float = 0.0
-    coefficients: tuple[float, ...] = ()
-
-    def __post_init__(self) -> None:
-        needed = {StressModel.HOERL: 3, StressModel.STAFFORD_2022: 2}.get(self.model, 0)
-        if len(self.coefficients) < needed:
-            raise ValueError(f"stress model {self.model} needs {needed} coefficients")
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class Source:
-    """Source spectrum and source duration.
-
-    Fortran: ``numsource, pf_a, pd_a, pf_b, pd_b``, ``fbdfa``, the spectral
-    scaling line ``c1_fa, c2_fa, amagc4fa, c1_eps, c2_eps, amagc4eps``, and
-    the source-duration weights ``w_fa, w_fb``.
-
-    Parameters
-    ----------
-    model : SourceModel
-        Source spectral shape.
-    stress : Stress
-        Stress parameter (models 1, 2, 11 and 12).
-    pf_a, pd_a, pf_b, pd_b : float
-        Exponents of the spectral shape. Source 1 uses ``pf_a`` and ``pd_a``
-        (2 and 1 for the omega-squared model); sources 11 and 12 use all four.
-    fb_over_fa : float
-        Joyner (1984) source only: ratio of the corner frequencies
-        (``fbdfa``, usually 4).
-    log10_fa : tuple of float
-        Sources 11 and 12: (c1, c2, M_ref) in log10(fa) = c1 + c2*(M - M_ref).
-    log10_eps : tuple of float
-        Source 12: (c1, c2, M_ref) in log10(eps) = c1 + c2*(M - M_ref).
-    duration_weight_fa, duration_weight_fb : float
-        Source duration = w_fa/fa + w_fb/fb.
-    """
-
-    model: SourceModel = SourceModel.SINGLE_CORNER
-    stress: Stress = field(default_factory=Stress)
-    pf_a: float = 2.0
-    pd_a: float = 1.0
-    pf_b: float = 0.0
-    pd_b: float = 0.0
-    fb_over_fa: float = 4.0
-    log10_fa: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    log10_eps: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    duration_weight_fa: float = 0.5
-    duration_weight_fb: float = 0.5
 
 
 class RpsCombination(StrEnum):
@@ -624,7 +504,7 @@ class Params:
 
     title: str
     medium: Medium
-    source: Source
+    source: SourceSpectrum
     finite_fault: FiniteFault
     spreading: Spreading
     q: Q

@@ -12,10 +12,11 @@ from pysmsim.params import (
     FiniteFaultModel,
     OscillatorCorrection,
     QModel,
-    SourceModel,
     SpreadingModel,
 )
 from pysmsim.scenario import DistanceMetric, RjbToRrup
+from pysmsim.spectrum.source import AtkinsonSilva2000, SingleCorner, TwoCornerAdditive
+from pysmsim.spectrum.stress import HoerlStress, LogLinearStress
 
 EXAMPLE = Path(__file__).parents[2] / "examples" / "wna_bt15_example.toml"
 
@@ -31,8 +32,9 @@ def test_load_example() -> None:
     params = config.params
     assert params.title == "Western North America params"
     assert params.medium.density == 2.72
-    assert params.source.model is SourceModel.SINGLE_CORNER
-    assert params.source.stress.stress_ref == 250.0
+    assert params.source == SingleCorner(
+        stress=LogLinearStress(stress_ref=250.0, magnitude_ref=6.5)
+    )
     assert params.finite_fault.model is FiniteFaultModel.TWO_LINES_SMOOTHED
     assert params.spreading.model is SpreadingModel.HINGED
     assert [s.r_start for s in params.spreading.segments] == [1.0, 40.0]
@@ -76,7 +78,10 @@ def test_dataclasses_are_frozen() -> None:
     [
         (lambda d: d.update(schema_version=2), "schema_version must be 1"),
         (lambda d: d["medium"].update(densty=2.7), "medium.densty"),
-        (lambda d: d["source"].update(model="one_corner"), "source.model"),
+        (lambda d: d["source"].update(model="one_corner"), "source: Input tag 'one_corner'"),
+        (lambda d: d["source"].update(pf_b=2.0), "source.single_corner.pf_b"),
+        (lambda d: d["source"].pop("stress"), "source.single_corner.stress"),
+        (lambda d: d["source"]["stress"].update(c1=1.0), "stress.log_linear.c1"),
         (lambda d: d["medium"].update(density=-1.0), "medium.density"),
         (lambda d: d["q"].update(qr1=0.0), "qr1 > 0"),
         (lambda d: d["spreading"].update(segments=[]), "at least one segment"),
@@ -84,7 +89,7 @@ def test_dataclasses_are_frozen() -> None:
         (lambda d: d["site"].update(amp_frequencies=[1.0] * 25), "strictly increasing"),
         (lambda d: d["filters"]["low_cut"].update(order=3), "even number"),
         (lambda d: d["scenarios"].update(periods=[0.0, 1.0]), "periods must be positive"),
-        (lambda d: d["source"]["stress"].update(stress_ref=0.0), "stress_ref > 0"),
+        (lambda d: d["source"]["stress"].update(stress_ref=0.0), "stress_ref: Input should be"),
     ],
 )
 def test_invalid_files_name_the_problem(
@@ -109,3 +114,34 @@ def test_log_spaced_and_linear_values(example_data: dict[str, Any]) -> None:
     grid = parse_config(example_data).scenarios
     assert grid.distances == pytest.approx((1.0, 10.0, 100.0))
     assert grid.magnitudes == pytest.approx((5.0, 5.5, 6.0))
+
+
+@pytest.mark.parametrize(
+    ("table", "expected"),
+    [
+        ({"model": "atkinson_silva_2000"}, AtkinsonSilva2000()),
+        (
+            {
+                "model": "two_corner_additive",
+                "log10_fa": [2.181, -0.496, 0.0],
+                "log10_eps": [0.605, -0.255, 0.0],
+                "fortran_compat": True,
+                "stress": {"model": "hoerl", "c1": 26900.0, "c2": -5.057, "c3": 0.652},
+            },
+            TwoCornerAdditive(
+                stress=HoerlStress(c1=26900.0, c2=-5.057, c3=0.652),
+                log10_fa=(2.181, -0.496, 0.0),
+                log10_eps=(0.605, -0.255, 0.0),
+                fortran_compat=True,
+            ),
+        ),
+    ],
+)
+def test_source_models_by_name(
+    example_data: dict[str, Any], table: dict[str, Any], expected: object
+) -> None:
+    example_data["source"] = table
+    config = parse_config(example_data)
+    assert config.params.source == expected
+    # and back through a TOML file
+    assert parse_config(tomllib.loads(dumps_config(config))) == config

@@ -12,7 +12,11 @@ One TOML file describes a whole run: the model parameters (what an SMSIM
 
 The keys in each section are the field names of the matching dataclass in
 :mod:`pysmsim.params` or :mod:`pysmsim.scenario`, and options are the enum
-values (for example ``model = "single_corner"``). In ``[scenarios]``,
+values (for example ``model = "hinged"`` in ``[spreading]``). In
+``[source]`` and ``[source.stress]``, ``model`` names one of the classes in
+:mod:`pysmsim.spectrum.source` and :mod:`pysmsim.spectrum.stress` (for
+example ``model = "single_corner"``), and the other keys are the fields of
+that class; a key the named model does not use is an error. In ``[scenarios]``,
 ``magnitudes`` may be a table ``{start, stop, step}`` and ``distances``,
 ``periods``, ``kappa0`` and ``stress`` a table ``{start, stop, count}`` for
 log-spaced values, as in the SMSIM control files. ``examples/`` has complete
@@ -27,10 +31,10 @@ from __future__ import annotations
 
 import tomllib
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from enum import Enum
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, ClassVar, Literal
 
 import tomli_w
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -52,13 +56,9 @@ from pysmsim.params import (
     RpsCombination,
     RVConfig,
     Site,
-    Source,
-    SourceModel,
     Spreading,
     SpreadingModel,
     SpreadingSegment,
-    Stress,
-    StressModel,
     TDConfig,
     WindowShape,
 )
@@ -71,6 +71,8 @@ from pysmsim.scenario import (
     RjbToRrup,
     ScenarioGrid,
 )
+from pysmsim.spectrum.source import SOURCE_MODELS, SourceSpectrum
+from pysmsim.spectrum.stress import STRESS_MODELS, StressModel
 
 __all__ = [
     "SCHEMA_VERSION",
@@ -120,49 +122,159 @@ class MediumSection(_Section):
         return Medium(**self.model_dump())
 
 
-class StressSection(_Section):
-    model: StressModel = StressModel.LOG_LINEAR
-    stress_ref: float = Field(0.0, ge=0, description="Stress (bars) at magnitude_ref")
+# The source and stress models: one section per model class, picked by the
+# value of ``model`` (a discriminated union), so that each accepts only the
+# keys of its own class.
+
+
+class _ModelSection(_Section):
+    """A section that builds the class named by its ``model`` key."""
+
+    registry: ClassVar[Mapping[str, type[Any]]]
+    model: str
+
+    def build(self) -> Any:
+        kwargs = {}
+        for key in type(self).model_fields:
+            if key != "model":
+                value = getattr(self, key)
+                kwargs[key] = value.build() if isinstance(value, _ModelSection) else value
+        return self.registry[self.model](**kwargs)
+
+
+class _StressSection(_ModelSection):
+    registry = STRESS_MODELS
+
+
+class LogLinearStressSection(_StressSection):
+    model: Literal["log_linear"]
+    stress_ref: float = Field(gt=0, description="Stress (bars) at magnitude_ref")
     dlog10_stress_dm: float = 0.0
-    magnitude_ref: float = 0.0
-    coefficients: tuple[float, ...] = ()
-
-    def build(self) -> Stress:
-        return Stress(**self.model_dump())
+    magnitude_ref: float = 6.5
 
 
-class SourceSection(_Section):
-    model: SourceModel = SourceModel.SINGLE_CORNER
-    stress: StressSection = Field(default_factory=StressSection)
-    pf_a: float = 2.0
-    pd_a: float = 1.0
-    pf_b: float = 0.0
-    pd_b: float = 0.0
-    fb_over_fa: float = Field(4.0, gt=0)
-    log10_fa: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    log10_eps: tuple[float, float, float] = (0.0, 0.0, 0.0)
+class HoerlStressSection(_StressSection):
+    model: Literal["hoerl"]
+    c1: float
+    c2: float
+    c3: float
+
+
+class Stafford2022StressSection(_StressSection):
+    model: Literal["stafford_2022"]
+    c1: float
+    c2: float
+
+
+StressSection = Annotated[
+    LogLinearStressSection | HoerlStressSection | Stafford2022StressSection,
+    Field(discriminator="model"),
+]
+"""The ``[source.stress]`` table."""
+
+
+class _SourceSection(_ModelSection):
+    registry = SOURCE_MODELS
+
+
+class _WeightedSourceSection(_SourceSection):
     duration_weight_fa: float = Field(0.5, ge=0)
     duration_weight_fb: float = Field(0.5, ge=0)
 
-    @model_validator(mode="after")
-    def _check_stress_used(self) -> SourceSection:
-        uses_stress = {
-            SourceModel.SINGLE_CORNER,
-            SourceModel.JOYNER_1984,
-            SourceModel.TWO_CORNER_MULTIPLICATIVE,
-            SourceModel.TWO_CORNER_ADDITIVE,
-        }
-        if (
-            self.model in uses_stress
-            and self.stress.model is StressModel.LOG_LINEAR
-            and self.stress.stress_ref <= 0
-        ):
-            raise ValueError(f"source model {self.model} needs stress.stress_ref > 0")
-        return self
 
-    def build(self) -> Source:
-        data = self.model_dump(exclude={"stress"})
-        return Source(stress=self.stress.build(), **data)
+class SingleCornerSection(_WeightedSourceSection):
+    model: Literal["single_corner"]
+    stress: StressSection
+    pf_a: float = Field(2.0, gt=0)
+    pd_a: float = Field(1.0, gt=0)
+
+
+class Joyner1984Section(_WeightedSourceSection):
+    model: Literal["joyner_1984"]
+    stress: StressSection
+    magnitude_hinge: float
+    fb_over_fa: float = Field(4.0, gt=0)
+
+
+class TwoCornerMultiplicativeSection(_WeightedSourceSection):
+    model: Literal["two_corner_multiplicative"]
+    stress: StressSection
+    log10_fa: tuple[float, float, float]
+    pf_a: float = Field(2.0, gt=0)
+    pd_a: float = Field(0.5, gt=0)
+    pf_b: float = Field(2.0, gt=0)
+    pd_b: float = Field(0.5, gt=0)
+
+
+class TwoCornerAdditiveSection(_WeightedSourceSection):
+    model: Literal["two_corner_additive"]
+    stress: StressSection
+    log10_fa: tuple[float, float, float]
+    log10_eps: tuple[float, float, float]
+    pf_a: float = Field(2.0, gt=0)
+    pd_a: float = Field(1.0, gt=0)
+    pf_b: float = Field(2.0, gt=0)
+    pd_b: float = Field(1.0, gt=0)
+    fortran_compat: bool = False
+
+
+# The models whose corner frequencies are fixed functions of magnitude have
+# no parameters besides the duration weights
+
+
+class Atkinson1993Section(_WeightedSourceSection):
+    model: Literal["atkinson_1993"]
+
+
+class AtkinsonSilva1997Section(_WeightedSourceSection):
+    model: Literal["atkinson_silva_1997"]
+
+
+class Haddon1996Section(_WeightedSourceSection):
+    model: Literal["haddon_1996"]
+
+
+class AtkinsonBoore1998CaliforniaSection(_WeightedSourceSection):
+    model: Literal["atkinson_boore_1998_california"]
+
+
+class BoatwrightChoySection(_WeightedSourceSection):
+    model: Literal["boatwright_choy"]
+
+
+class JoynerENASection(_WeightedSourceSection):
+    model: Literal["joyner_ena"]
+
+
+class AtkinsonSilva2000Section(_WeightedSourceSection):
+    model: Literal["atkinson_silva_2000"]
+
+
+class Atkinson2005Section(_WeightedSourceSection):
+    model: Literal["atkinson_2005"]
+
+
+class JiArchuleta2020Section(_SourceSection):
+    model: Literal["ji_archuleta_2020"]
+
+
+SourceSection = Annotated[
+    SingleCornerSection
+    | Joyner1984Section
+    | Atkinson1993Section
+    | AtkinsonSilva1997Section
+    | Haddon1996Section
+    | AtkinsonBoore1998CaliforniaSection
+    | BoatwrightChoySection
+    | JoynerENASection
+    | AtkinsonSilva2000Section
+    | Atkinson2005Section
+    | TwoCornerMultiplicativeSection
+    | TwoCornerAdditiveSection
+    | JiArchuleta2020Section,
+    Field(discriminator="model"),
+]
+"""The ``[source]`` table."""
 
 
 class FiniteFaultSection(_Section):
@@ -524,6 +636,21 @@ def _plain(value: Any) -> Any:
     return value
 
 
+def _model_table(obj: SourceSpectrum | StressModel) -> dict[str, Any]:
+    """Turn a source or stress model into a table that starts with its ``model``."""
+    table: dict[str, Any] = {"model": obj.name}
+    # The model's own parameters first, then the duration weights it inherits
+    names = [f.name for f in fields(obj)]  # type: ignore[arg-type]
+    weights = [n for n in names if n.startswith("duration_weight_")]
+    for name in [n for n in names if n not in weights] + weights:
+        value = getattr(obj, name)
+        if isinstance(value, SourceSpectrum | StressModel):
+            table[name] = _model_table(value)
+        else:
+            table[name] = _plain(value)
+    return table
+
+
 def dumps_config(config: RunConfig) -> str:
     """Write a :class:`RunConfig` as the text of a TOML run file.
 
@@ -532,6 +659,7 @@ def dumps_config(config: RunConfig) -> str:
     """
     params = _plain(asdict(config.params))
     title = params.pop("title")
+    params["source"] = _model_table(config.params.source)
     doc: dict[str, Any] = {"schema_version": SCHEMA_VERSION, "title": title}
     doc.update(params)
     doc["scenarios"] = _plain(asdict(config.scenarios))

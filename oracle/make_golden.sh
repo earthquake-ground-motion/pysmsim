@@ -17,6 +17,11 @@
 #   factors/  factor_dump at M 4, 6, 8 and Rrup 5, 20, 100 km, on 41
 #             frequencies from 0.01 to 100 Hz
 # and saves each output as <dir>/<params stem>[.M<m>.R<rrup>].<ext>.
+#
+# It also writes source/: factor_dump for each synthetic source case in
+# oracle/inputs/source_cases.txt (ofr.params with the source lines replaced)
+# at M 2, 3, 4.5, 5, 6 and 8, Rrup 20 km, on 21 frequencies from 0.01 to
+# 100 Hz, saved as source/<case>.M<m>.txt.
 # The control files take k0 and stress from the params file; their headers
 # list the magnitudes, distances, periods and frequencies.
 #
@@ -52,8 +57,8 @@ rm -rf "$RUN_DIR"
 mkdir -p "$RUN_DIR"
 mkdir -p "$OUT_DIR"
 OUT_DIR=$(cd "$OUT_DIR" && pwd)
-rm -rf "$OUT_DIR/rv" "$OUT_DIR/fas" "$OUT_DIR/td" "$OUT_DIR/factors"
-mkdir -p "$OUT_DIR/rv" "$OUT_DIR/fas" "$OUT_DIR/factors"
+rm -rf "$OUT_DIR/rv" "$OUT_DIR/fas" "$OUT_DIR/td" "$OUT_DIR/factors" "$OUT_DIR/source"
+mkdir -p "$OUT_DIR/rv" "$OUT_DIR/fas" "$OUT_DIR/factors" "$OUT_DIR/source"
 [ "$SKIP_TD" = 1 ] || mkdir -p "$OUT_DIR/td"
 
 # prepare <dir>: params files with bare .pars file names (they are written
@@ -103,6 +108,29 @@ for f in "$SMSIM_DIR"/params_and_pars_files/*.params; do
                 > /dev/null)
             cp "$dir/$out" "$OUT_DIR/factors/$out"
         done
+    done
+done
+
+# Synthetic source cases: replace the 4th, 5th and 6th value lines (not
+# comments) of ofr.params, which are the shape, stress and scaling lines
+dir="$RUN_DIR/source"
+prepare "$dir"
+grep -v '^ *#' "$ORACLE_DIR/inputs/source_cases.txt" | grep -v '^ *$' |
+while IFS='|' read -r name shape stress scaling; do
+    name=$(echo "$name" | tr -d ' ')
+    echo "source: $name"
+    awk -v l4="$shape" -v l5="$stress" -v l6="$scaling" '
+        /^ *!/ { print; next }
+        { n++ }
+        n == 4 { print " " l4; next }
+        n == 5 { print " " l5; next }
+        n == 6 { print " " l6; next }
+        { print }' "$dir/ofr.params" > "$dir/$name.params"
+    for m in 2.0 3.0 4.5 5.0 6.0 8.0; do
+        out="$name.M$m.txt"
+        (cd "$dir" && "$BIN_DIR/factor_dump" "$name.params" "$m" 20.0 "$out" 21 0.01 100.0 \
+            > /dev/null)
+        cp "$dir/$out" "$OUT_DIR/source/$out"
     done
 done
 

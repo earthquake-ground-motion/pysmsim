@@ -76,7 +76,10 @@ two-segment Q. Other source models and spreading options need synthetic
 `make_golden.sh` writes the golden files in `tests/golden/<build>/` (see
 `tests/golden/README.md` for what they contain). For every shipped `.params`
 file it runs the RV, FAS and TD loop programs, using the control files in
-`inputs/`, and `factor_dump` on a smaller grid than `dump_factors.sh`. The
+`inputs/`, and `factor_dump` on a smaller grid than `dump_factors.sh`. It
+also runs `factor_dump` for the synthetic source cases in
+`inputs/source_cases.txt`, variants of `ofr.params` that cover all 13 source
+models and the stress models. The
 double build takes about 7 minutes with gfortran 13.3, almost all of it in
 the time-domain runs; `SKIP_TD=1` leaves those out.
 
@@ -133,7 +136,7 @@ exact equality.
 
 ## Not yet done
 
-- Synthetic `.params` files for the source models and spreading options
+- Synthetic `.params` files for the spreading, finite-fault and Q options
   that the shipped files do not use.
 - The oscillator response (`harmoscf`), which `factor_dump` leaves out
   because it prints the Fourier spectrum without an instrument.
