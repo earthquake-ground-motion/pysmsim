@@ -1,0 +1,31 @@
+# Synthetic source cases for the golden files (oracle/make_golden.sh).
+#
+# Each case is ofr.params from the SMSIM distribution with three lines
+# replaced: the spectral shape, the stress specification and the spectral
+# scaling (see the comments in any .params file for their meaning). The
+# shipped .params files all use source model 1, so these cases cover the
+# other twelve models and the stress models.
+#
+# Columns, separated by "|":
+#   name | shape line | stress line | scaling line
+#
+# The cases with "quirk" in the name exercise Fortran behaviour that pysmsim
+# fixes by default (see the fortran_compat flag in pysmsim.spectrum.source).
+s01_single_corner     | 1 2.0 1.0 0.0 0.0   | 1 80.0 0.0 6.5 4.0 0.0                | 0.0 0.0 0.0 0.0 0.0 0.0
+s01_butterworth       | 1 4.0 0.5 0.0 0.0   | 1 80.0 0.0 6.5 4.0 0.0                | 0.0 0.0 0.0 0.0 0.0 0.0
+s01_stress_slope      | 1 2.0 1.0 0.0 0.0   | 1 80.0 0.1 6.5 4.0 0.0                | 0.0 0.0 0.0 0.0 0.0 0.0
+s01_hoerl             | 1 2.0 1.0 0.0 0.0   | 2 26900.0 -5.057 0.652 0.0 0.0        | 0.0 0.0 0.0 0.0 0.0 0.0
+s01_stafford          | 1 2.0 1.0 0.0 0.0   | 3 4.599 0.4624 0.0453 0.109 0.0       | 0.0 0.0 0.0 0.0 0.0 0.0
+s02_joyner            | 2 2.0 1.0 0.0 0.0   | 1 80.0 0.0 7.0 4.0 0.0                | 0.0 0.0 0.0 0.0 0.0 0.0
+s03_atkinson_1993     | 3 2.0 1.0 0.0 0.0   | 1 80.0 0.0 6.5 4.0 0.0                | 0.0 0.0 0.0 0.0 0.0 0.0
+s04_atkinson_silva_97 | 4 2.0 1.0 0.0 0.0   | 1 80.0 0.0 6.5 4.0 0.0                | 0.0 0.0 0.0 0.0 0.0 0.0
+s05_haddon            | 5 2.0 1.0 0.0 0.0   | 1 80.0 0.0 6.5 4.0 0.0                | 0.0 0.0 0.0 0.0 0.0 0.0
+s06_ab98_california   | 6 2.0 1.0 0.0 0.0   | 1 80.0 0.0 6.5 4.0 0.0                | 0.0 0.0 0.0 0.0 0.0 0.0
+s07_boatwright_choy   | 7 2.0 1.0 0.0 0.0   | 1 80.0 0.0 6.5 4.0 0.0                | 0.0 0.0 0.0 0.0 0.0 0.0
+s08_joyner_ena        | 8 2.0 1.0 0.0 0.0   | 1 80.0 0.0 6.5 4.0 0.0                | 0.0 0.0 0.0 0.0 0.0 0.0
+s09_atkinson_silva_00 | 9 2.0 1.0 0.0 0.0   | 1 80.0 0.0 6.5 4.0 0.0                | 0.0 0.0 0.0 0.0 0.0 0.0
+s10_atkinson_2005     | 10 2.0 1.0 0.0 0.0  | 1 80.0 0.0 6.5 4.0 0.0                | 0.0 0.0 0.0 0.0 0.0 0.0
+s11_two_corner_mult   | 11 2.0 0.5 2.0 0.5  | 1 80.0 0.0 6.5 4.0 0.0                | 2.181 -0.496 0.0 0.0 0.0 0.0
+s12_two_corner_add    | 12 2.0 1.0 2.0 1.0  | 1 80.0 0.0 6.5 4.0 0.0                | 2.181 -0.496 0.0 0.605 -0.255 0.0
+s12_quirk_eps_ref     | 12 2.0 1.0 2.0 1.0  | 1 80.0 0.0 6.5 4.0 0.0                | 2.181 -0.496 0.0 0.605 -0.255 2.0
+s13_ji_archuleta      | 13 2.0 1.0 0.0 0.0  | 1 80.0 0.0 6.5 4.0 0.0                | 0.0 0.0 0.0 0.0 0.0 0.0

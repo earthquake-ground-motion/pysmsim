@@ -27,12 +27,12 @@ from pysmsim.params import (
     Q,
     RVConfig,
     Site,
-    Source,
     Spreading,
     SpreadingSegment,
-    Stress,
 )
 from pysmsim.scenario import OutputSettings, ScenarioGrid
+from pysmsim.spectrum.source import SingleCorner
+from pysmsim.spectrum.stress import LogLinearStress
 
 HERE = Path(__file__).parent
 
@@ -41,7 +41,7 @@ HERE = Path(__file__).parent
 params = Params(
     title="Generic ENA rock",
     medium=Medium(density=2.8, shear_velocity=3.6),
-    source=Source(stress=Stress(stress_ref=150.0, magnitude_ref=6.5)),
+    source=SingleCorner(stress=LogLinearStress(stress_ref=150.0, magnitude_ref=6.5)),
     finite_fault=FiniteFault(
         model=FiniteFaultModel.TWO_LINES_SMOOTHED,
         c1=-1.8276,
@@ -85,15 +85,15 @@ higher_kappa = replace(
 )
 
 # Make a family of variants, for example a stress sweep, each with its own output.
+# The source is a single-corner model; give it a new stress model each time.
+source = base.params.source
+assert isinstance(source, SingleCorner)
 variants = {
     stress: replace(
         base,
         params=replace(
             base.params,
-            source=replace(
-                base.params.source,
-                stress=replace(base.params.source.stress, stress_ref=stress),
-            ),
+            source=replace(source, stress=LogLinearStress(stress_ref=stress, magnitude_ref=6.5)),
         ),
         scenarios=replace(base.scenarios, stress=None),  # use the params stress
         output=replace(base.output, path=f"wna_stress_{stress:g}.csv"),

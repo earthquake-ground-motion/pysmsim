@@ -81,11 +81,23 @@ Units are cgs (cm, s, g/cm³), with distances in km and g = 981 cm/s².
    - `get_params` silently rounds the low-cut `nslope` down to a multiple of
      4 (pysmsim rejects other values);
    - source models 2, 11 and 12 always use the `log_linear` stress formula,
-     whatever stress model the params file names.
+     whatever stress model the params file names (this gives zero stress
+     and NaN corner frequencies with `hoerl`; pysmsim uses the named model);
+   - for source model 12, the magnitude where eps = 1 is computed as
+     -c1/c2, ignoring the reference magnitude of log10(eps)
+     (the `fortran_compat` field of `TwoCornerAdditive`).
 3. **One TOML input file per run.** It replaces the `.params`, `.ctl` and
    `.pars` files and is read with `tomllib`.
    - Settings are named keys, not positions.
-   - Options are words (`"bt15"`), not integer codes.
+   - Options are words (`"bt15"`), not integer codes. Fortran numbers
+     appear only in docstrings and in the converter.
+   - Each model with its own parameters is its own class, chosen by its
+     `model` name, holding only the parameters it uses and defining its own
+     behaviour; no if/elif chains over model types. The TOML section is a
+     pydantic discriminated union on `model`, so keys another model uses are
+     rejected. Source and stress models (`pysmsim.spectrum.source`,
+     `pysmsim.spectrum.stress`) follow this; spreading, Q, finite-fault and
+     high-cut will follow it as their modules are written.
    - The file carries `schema_version`.
    - A run can start from a preset (`base = "wna_bt15"`).
    - The BT15 and crustal-amp tables are bundled package data, chosen by name.

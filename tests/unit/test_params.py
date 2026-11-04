@@ -11,19 +11,15 @@ from pysmsim.params import (
     Q,
     QModel,
     Site,
-    SourceModel,
     Spreading,
     SpreadingModel,
     SpreadingSegment,
-    Stress,
-    StressModel,
 )
 from pysmsim.scenario import Scenario, ScenarioGrid
 
 
 def test_enums_take_their_string_values() -> None:
-    assert SourceModel("two_corner_additive") is SourceModel.TWO_CORNER_ADDITIVE
-    assert len(SourceModel) == 13
+    assert SpreadingModel("hinged") is SpreadingModel.HINGED
     assert len(SpreadingModel) == 8
 
 
@@ -49,11 +45,6 @@ def test_stafford_spreading_needs_no_segments() -> None:
         model=SpreadingModel.STAFFORD_OPTIMAL, gamma1=-1.1611, r_t=50.0, gamma2=-0.5
     )
     assert spreading.segments == ()
-
-
-def test_stress_coefficients_checked() -> None:
-    with pytest.raises(ValueError, match="needs 3 coefficients"):
-        Stress(model=StressModel.HOERL, coefficients=(1.0,))
 
 
 def test_stafford_q_needs_no_reference_frequencies() -> None:
