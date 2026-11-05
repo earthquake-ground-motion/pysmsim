@@ -13,8 +13,8 @@ One TOML file describes a whole run: the model parameters (what an SMSIM
 The keys in each section are the field names of the matching dataclass in
 :mod:`pysmsim.params` or :mod:`pysmsim.scenario`, and options are the enum
 values (for example ``osc_correction = "bt15_wna"`` in ``[rv]``). In
-``[source]``, ``[source.stress]``, ``[finite_fault]``, ``[spreading]`` and
-``[q]``, ``model`` names one of the classes in the modules of
+``[source]``, ``[source.stress]``, ``[finite_fault]``, ``[spreading]``,
+``[q]`` and ``[filters.high_cut]``, ``model`` names one of the classes in the modules of
 :mod:`pysmsim.spectrum` (for example ``model = "single_corner"``), and the
 other keys are the fields of that class; a key the named model does not use
 is an error. In ``[scenarios]``,
@@ -41,17 +41,12 @@ import tomli_w
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from pysmsim.params import (
-    Filters,
-    HighCutFilter,
-    HighCutModel,
-    LowCutFilter,
     Medium,
     NoiseDistribution,
     OscillatorCorrection,
     Params,
     PathDuration,
     RVConfig,
-    Site,
     TDConfig,
     WindowShape,
 )
@@ -65,7 +60,9 @@ from pysmsim.scenario import (
     ScenarioGrid,
 )
 from pysmsim.spectrum.attenuation import Q_MODELS, QModel
+from pysmsim.spectrum.filters import HIGH_CUT_MODELS, Filters, HighCutFilter, LowCutFilter
 from pysmsim.spectrum.finite_fault import FINITE_FAULT_MODELS, FiniteFaultFactor, RpsCombination
+from pysmsim.spectrum.site import Site
 from pysmsim.spectrum.source import SOURCE_MODELS, SourceSpectrum
 from pysmsim.spectrum.spreading import SPREADING_MODELS, GeometricalSpreading, SpreadingSegment
 from pysmsim.spectrum.stress import STRESS_MODELS, StressModel
@@ -486,19 +483,38 @@ class LowCutSection(_Section):
         return LowCutFilter(**self.model_dump())
 
 
-class HighCutSection(_Section):
-    model: HighCutModel = HighCutModel.NONE
-    f1: float = Field(0.0, ge=0)
-    f2: float = Field(0.0, ge=0)
-    eta: float = Field(1.0, gt=0)
+class _HighCutSection(_ModelSection):
+    registry = HIGH_CUT_MODELS
 
-    def build(self) -> HighCutFilter:
-        return HighCutFilter(**self.model_dump())
+
+class NoHighCutSection(_HighCutSection):
+    model: Literal["none"]
+
+
+class _CosineTaperSection(_HighCutSection):
+    f1: float = Field(gt=0, description="Frequency (Hz) where the taper starts")
+    f2: float = Field(gt=0, description="Frequency (Hz) where the taper ends")
+    eta: float = Field(1.0, gt=0, description="Power of the cosine")
+
+
+class RaisedCosineHighCutSection(_CosineTaperSection):
+    model: Literal["raised_cosine"]
+
+
+class QuarterCosineHighCutSection(_CosineTaperSection):
+    model: Literal["quarter_cosine"]
+
+
+HighCutSection = Annotated[
+    NoHighCutSection | RaisedCosineHighCutSection | QuarterCosineHighCutSection,
+    Field(discriminator="model"),
+]
+"""The ``[filters.high_cut]`` table."""
 
 
 class FiltersSection(_Section):
     low_cut: LowCutSection = Field(default_factory=LowCutSection)
-    high_cut: HighCutSection = Field(default_factory=HighCutSection)
+    high_cut: HighCutSection = Field(default_factory=lambda: NoHighCutSection(model="none"))
 
     def build(self) -> Filters:
         return Filters(low_cut=self.low_cut.build(), high_cut=self.high_cut.build())
@@ -734,7 +750,14 @@ def load_config(path: str | Path) -> RunConfig:
         raise ConfigError(f"{path}: {err}") from err
 
 
-_MODEL_TYPES = (SourceSpectrum, StressModel, FiniteFaultFactor, GeometricalSpreading, QModel)
+_MODEL_TYPES = (
+    SourceSpectrum,
+    StressModel,
+    FiniteFaultFactor,
+    GeometricalSpreading,
+    QModel,
+    HighCutFilter,
+)
 """Classes written as a table that starts with their ``model`` name."""
 
 _COMMON_KEYS = ("c_q", "duration_weight_fa", "duration_weight_fb")

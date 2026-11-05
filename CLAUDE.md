@@ -97,6 +97,10 @@ Units are cgs (cm, s, g/cm³), with distances in km and g = 981 cm/s².
    - `dimin` uses Rrup for the Stafford Q only when `fr1` is exactly -1,
      though `q()` uses the Stafford form for any `fr1 < 0` (pysmsim's
      `Stafford2022Q` always uses Rrup);
+   - the RV drivers compute the upper integration frequency `fup` (via
+     `get_fup`) from `akappa`, the kappa at the reference magnitude, not
+     from kappa at the scenario magnitude, so `dkappadmag` does not change
+     `fup` (matters for the RV step);
    - `skipcmnt` always skips the line before the values it guards, comment
      or not, so a params file without that comment line is misread (matters
      for the converter).
@@ -109,10 +113,11 @@ Units are cgs (cm, s, g/cm³), with distances in km and g = 981 cm/s².
      `model` name, holding only the parameters it uses and defining its own
      behaviour; no if/elif chains over model types. The TOML section is a
      pydantic discriminated union on `model`, so keys another model uses are
-     rejected. Source, stress, finite-fault, spreading and Q models
-     (`pysmsim.spectrum.source`, `.stress`, `.finite_fault`, `.spreading`,
-     `.attenuation`) follow this; the high-cut filter will follow it when
-     its module is written. Compiled kernels are `pysmsim._jit.Kernel`
+     rejected. Source, stress, finite-fault, spreading, Q and high-cut
+     models (`pysmsim.spectrum.source`, `.stress`, `.finite_fault`,
+     `.spreading`, `.attenuation`, `.filters`) follow this. Settings with
+     only one form in SMSIM (the site terms in `pysmsim.spectrum.site`, the
+     low-cut filter) are single classes. Compiled kernels are `pysmsim._jit.Kernel`
      objects (compiled function plus NumPy twin) named by the class.
    - The file carries `schema_version`.
    - A run can start from a preset (`base = "wna_bt15"`).

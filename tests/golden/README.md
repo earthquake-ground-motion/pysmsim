@@ -31,6 +31,8 @@ oscillator corrections for WNA and ENA. The control files in
 | `path/` | `factor_dump` | 17 synthetic path cases (below); M 3, 5, 7; Rrup 0.5, 5, 30, 55, 200 km; 21 frequencies, 0.01-100 Hz | 21 (one file per case, M and Rrup) |
 | `rv/` | `tmrsk_loop_rv_drvr` | M 4-8 (step 1); Rjb 1, 5, 20, 50, 100, 300 km; PGV, PGA and PSA at 0.01, 0.1, 0.3, 1, 3, 10 s (5% damping) | 240 |
 | `source/` | `factor_dump` | 18 synthetic source cases (below); M 2, 3, 4.5, 5, 6, 8; Rrup 20 km; 21 frequencies, 0.01-100 Hz | 21 (one file per case and M) |
+| `site/` | `factor_dump` | 10 synthetic site and filter cases (below); M 4, 6, 8; Rrup 20 km; 41 frequencies, 0.01-100 Hz | 41 (one file per case and M) |
+| `site_lines/` | none | The crustal-amplification, diminution, low-cut and high-cut lines of each shipped `.params` file, copied without comments | (one file per params file) |
 | `td/` | `tmrsk_loop_td_drvr` | M 4, 6, 8; Rjb 5, 20, 100 km; PGV, PGA and PSA at 0.01, 0.1, 0.2, 1, 2 s (5% damping); 800 simulations | 63 |
 
 The `source/` cases cover the source models and stress models that the
@@ -47,6 +49,13 @@ three-part, and Stafford's Q with a finite-fault factor so that Rps and Rrup
 differ). Each is `ofr.params` with the finite-fault, spreading and Q lines
 replaced, as listed in `oracle/inputs/path_cases.txt`. The tests compare the
 AB14 spreading cases (options 4 and 5) with `fortran_compat=True`.
+
+The `site/` cases cover the crustal amplification (a one-point table and
+five-point tables), kappa that depends on magnitude, fmax without kappa, the
+low-cut filter with nslope 4, 6 and 12, and both high-cut shapes with
+several powers. Each is `ofr.params` with the site and filter lines
+replaced, as listed in `oracle/inputs/site_cases.txt`.
+`s_lowcut_quirk_nslope6` shows SMSIM rounding nslope 6 down to 4.
 
 The loop programs convert Rjb to Rrup with the CY14 Ztor relation for a
 strike-slip fault (case 2 in the control files).

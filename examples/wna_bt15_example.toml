@@ -87,10 +87,7 @@ fcut = 0.0             # no low-cut filter
 order = 4
 
 [filters.high_cut]
-model = "none"
-f1 = 25.0
-f2 = 50.0
-eta = 1.0
+model = "none"         # or, for example, model = "raised_cosine", f1 = 25.0, f2 = 50.0
 
 [rv]
 zup = 10.0

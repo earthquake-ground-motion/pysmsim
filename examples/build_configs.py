@@ -23,11 +23,11 @@ from pysmsim.params import (
     Params,
     PathDuration,
     RVConfig,
-    Site,
 )
 from pysmsim.scenario import OutputSettings, ScenarioGrid
 from pysmsim.spectrum.attenuation import PiecewiseQ
 from pysmsim.spectrum.finite_fault import TwoLinesSmoothed
+from pysmsim.spectrum.site import Site
 from pysmsim.spectrum.source import SingleCorner
 from pysmsim.spectrum.spreading import Hinged, SpreadingSegment
 from pysmsim.spectrum.stress import LogLinearStress

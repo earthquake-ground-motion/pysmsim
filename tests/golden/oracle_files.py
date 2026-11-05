@@ -13,6 +13,14 @@ import numpy as np
 import numpy.typing as npt
 
 from pysmsim.spectrum.attenuation import PiecewiseQ, QModel, Stafford2022Q
+from pysmsim.spectrum.filters import (
+    Filters,
+    HighCutFilter,
+    LowCutFilter,
+    NoHighCut,
+    QuarterCosineHighCut,
+    RaisedCosineHighCut,
+)
 from pysmsim.spectrum.finite_fault import (
     FiniteFaultFactor,
     Generalized,
@@ -23,6 +31,7 @@ from pysmsim.spectrum.finite_fault import (
     TwoLines,
     TwoLinesSmoothed,
 )
+from pysmsim.spectrum.site import Site
 from pysmsim.spectrum.source import (
     SOURCE_MODELS,
     Joyner1984,
@@ -307,4 +316,79 @@ def read_path_cases() -> dict[str, PathModels]:
             continue
         name, ff, spreading, q = (part.strip() for part in line.split("|"))
         cases[name] = path_models(ff, spreading, q)
+    return cases
+
+
+# --- Site and filters -----------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SiteModels:
+    """The site terms and filters of one params file.
+
+    ``nslope`` is the low-cut value as written in the file, before SMSIM
+    rounds it down to a multiple of 4.
+    """
+
+    site: Site
+    filters: Filters
+    nslope: int
+
+
+def _high_cut(line: list[str]) -> HighCutFilter:
+    """The high-cut filter of an SMSIM high-cut line (itype_hcfilt, fhc1, fhc2, eta)."""
+    itype = int(line[0])
+    f1, f2, eta = (float(v) for v in line[1:4])
+    match itype:
+        case 0:
+            return NoHighCut()
+        case 1:
+            return RaisedCosineHighCut(f1=f1, f2=f2, eta=eta)
+        case _:
+            return QuarterCosineHighCut(f1=f1, f2=f2, eta=eta)
+
+
+def site_models(points: list[list[str]], dimin: str, low_cut: str, high_cut: str) -> SiteModels:
+    """Site and filters from SMSIM params-file lines; ``points`` are (f, amp) pairs."""
+    fm, kappa, dkappa, mref = (float(v) for v in dimin.split()[:4])
+    fcut_s, nslope_s = low_cut.split()[:2]
+    nslope = int(nslope_s)
+    # SMSIM rounds nslope down to a multiple of 4 (and up to 4)
+    order = max(4, 4 * (nslope // 4)) // 2
+    site = Site(
+        amp_frequencies=tuple(float(p[0]) for p in points),
+        amplifications=tuple(float(p[1]) for p in points),
+        kappa0=kappa,
+        dkappa_dmag=dkappa,
+        kappa_magnitude_ref=mref,
+        fmax=fm,
+    )
+    filters = Filters(
+        low_cut=LowCutFilter(fcut=float(fcut_s), order=order),
+        high_cut=_high_cut(high_cut.split()),
+    )
+    return SiteModels(site=site, filters=filters, nslope=nslope)
+
+
+def read_shipped_sites() -> dict[str, SiteModels]:
+    """The site and filter lines of the shipped .params files (golden site_lines/)."""
+    sites: dict[str, SiteModels] = {}
+    for path in sorted((GOLDEN / "site_lines").glob("*.txt")):
+        lines = [line for line in path.read_text().splitlines() if line.strip()]
+        namps = int(lines[0].split()[0])
+        points = [line.split()[:2] for line in lines[1 : namps + 1]]
+        dimin, low_cut, high_cut = lines[namps + 1 : namps + 4]
+        sites[path.stem] = site_models(points, dimin, low_cut, high_cut)
+    return sites
+
+
+def read_site_cases() -> dict[str, SiteModels]:
+    """The synthetic site and filter cases of oracle/inputs/site_cases.txt."""
+    cases: dict[str, SiteModels] = {}
+    for line in (ORACLE_INPUTS / "site_cases.txt").read_text().splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        name, amps, dimin, low_cut, high_cut = (part.strip() for part in line.split("|"))
+        points = [p.split() for p in amps.split(";")]
+        cases[name] = site_models(points, dimin, low_cut, high_cut)
     return cases

@@ -81,7 +81,11 @@ also runs `factor_dump` for the synthetic source cases in
 `inputs/source_cases.txt`, variants of `ofr.params` that cover all 13 source
 models and the stress models, and for the synthetic path cases in
 `inputs/path_cases.txt`, which cover the finite-fault factors, spreading
-options and Q models that the shipped files do not use. The
+options and Q models that the shipped files do not use, and for the
+synthetic site cases in `inputs/site_cases.txt`, which cover the crustal
+amplification, kappa, fmax and the low-cut and high-cut filters. It also
+saves the site and filter lines of each shipped `.params` file, so that the
+tests can rebuild those settings without the distribution. The
 double build takes about 7 minutes with gfortran 13.3, almost all of it in
 the time-domain runs; `SKIP_TD=1` leaves those out.
 

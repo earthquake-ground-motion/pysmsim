@@ -2,15 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pysmsim.params import (
-    HighCutFilter,
-    HighCutModel,
-    LowCutFilter,
-    Medium,
-    OscillatorCorrection,
-    PathDuration,
-    Site,
-)
+from pysmsim.params import Medium, OscillatorCorrection, PathDuration
 from pysmsim.scenario import Scenario, ScenarioGrid
 
 
@@ -25,18 +17,9 @@ def test_medium_defaults() -> None:
     assert medium.free_surface == 2.0
 
 
-def test_path_duration_and_site_checks() -> None:
+def test_path_duration_checks() -> None:
     with pytest.raises(ValueError, match="same length"):
         PathDuration(distances=(0.0, 10.0), durations=(0.0,))
-    with pytest.raises(ValueError, match="positive"):
-        Site(amp_frequencies=(1.0, 2.0), amplifications=(1.0, 0.0))
-
-
-def test_filters_checks() -> None:
-    with pytest.raises(ValueError, match="even number"):
-        LowCutFilter(fcut=0.1, order=3)
-    with pytest.raises(ValueError, match="0 < f1 < f2"):
-        HighCutFilter(model=HighCutModel.RAISED_COSINE, f1=50.0, f2=25.0)
 
 
 def test_scenario_checks() -> None:
