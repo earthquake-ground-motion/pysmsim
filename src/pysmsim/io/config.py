@@ -12,11 +12,12 @@ One TOML file describes a whole run: the model parameters (what an SMSIM
 
 The keys in each section are the field names of the matching dataclass in
 :mod:`pysmsim.params` or :mod:`pysmsim.scenario`, and options are the enum
-values (for example ``model = "hinged"`` in ``[spreading]``). In
-``[source]`` and ``[source.stress]``, ``model`` names one of the classes in
-:mod:`pysmsim.spectrum.source` and :mod:`pysmsim.spectrum.stress` (for
-example ``model = "single_corner"``), and the other keys are the fields of
-that class; a key the named model does not use is an error. In ``[scenarios]``,
+values (for example ``osc_correction = "bt15_wna"`` in ``[rv]``). In
+``[source]``, ``[source.stress]``, ``[finite_fault]``, ``[spreading]`` and
+``[q]``, ``model`` names one of the classes in the modules of
+:mod:`pysmsim.spectrum` (for example ``model = "single_corner"``), and the
+other keys are the fields of that class; a key the named model does not use
+is an error. In ``[scenarios]``,
 ``magnitudes`` may be a table ``{start, stop, step}`` and ``distances``,
 ``periods``, ``kappa0`` and ``stress`` a table ``{start, stop, count}`` for
 log-spaced values, as in the SMSIM control files. ``examples/`` has complete
@@ -31,7 +32,7 @@ from __future__ import annotations
 
 import tomllib
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Annotated, Any, ClassVar, Literal
@@ -41,8 +42,6 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from pysmsim.params import (
     Filters,
-    FiniteFault,
-    FiniteFaultModel,
     HighCutFilter,
     HighCutModel,
     LowCutFilter,
@@ -51,14 +50,8 @@ from pysmsim.params import (
     OscillatorCorrection,
     Params,
     PathDuration,
-    Q,
-    QModel,
-    RpsCombination,
     RVConfig,
     Site,
-    Spreading,
-    SpreadingModel,
-    SpreadingSegment,
     TDConfig,
     WindowShape,
 )
@@ -71,7 +64,10 @@ from pysmsim.scenario import (
     RjbToRrup,
     ScenarioGrid,
 )
+from pysmsim.spectrum.attenuation import Q_MODELS, QModel
+from pysmsim.spectrum.finite_fault import FINITE_FAULT_MODELS, FiniteFaultFactor, RpsCombination
 from pysmsim.spectrum.source import SOURCE_MODELS, SourceSpectrum
+from pysmsim.spectrum.spreading import SPREADING_MODELS, GeometricalSpreading, SpreadingSegment
 from pysmsim.spectrum.stress import STRESS_MODELS, StressModel
 
 __all__ = [
@@ -134,12 +130,18 @@ class _ModelSection(_Section):
     model: str
 
     def build(self) -> Any:
-        kwargs = {}
-        for key in type(self).model_fields:
-            if key != "model":
-                value = getattr(self, key)
-                kwargs[key] = value.build() if isinstance(value, _ModelSection) else value
+        kwargs = {
+            key: _build(getattr(self, key)) for key in type(self).model_fields if key != "model"
+        }
         return self.registry[self.model](**kwargs)
+
+
+def _build(value: Any) -> Any:
+    """Build nested sections (alone or in a tuple); leave other values as they are."""
+    if isinstance(value, tuple):
+        return tuple(_build(v) for v in value)
+    build = getattr(value, "build", None)
+    return build() if isinstance(value, _Section) and build is not None else value
 
 
 class _StressSection(_ModelSection):
@@ -277,17 +279,69 @@ SourceSection = Annotated[
 """The ``[source]`` table."""
 
 
-class FiniteFaultSection(_Section):
-    model: FiniteFaultModel = FiniteFaultModel.NONE
-    combination: RpsCombination = RpsCombination.QUADRATURE
-    c1: float = 0.0
-    c2: float = 0.0
-    c3: float = 0.0
-    c4: float = 0.0
-    delta_m: float = 0.0
+class _FiniteFaultSection(_ModelSection):
+    registry = FINITE_FAULT_MODELS
 
-    def build(self) -> FiniteFault:
-        return FiniteFault(**self.model_dump())
+
+class NoFiniteFaultSection(_FiniteFaultSection):
+    model: Literal["none"]
+
+
+class _CombinedSection(_FiniteFaultSection):
+    combination: RpsCombination = RpsCombination.QUADRATURE
+
+
+class OneLineSection(_CombinedSection):
+    model: Literal["one_line"]
+    c1: float
+    c2: float
+
+
+class TwoLinesSection(_CombinedSection):
+    model: Literal["two_lines"]
+    c1: float
+    c2: float
+    c3: float
+    c4: float
+
+
+class TwoLinesSmoothedSection(_CombinedSection):
+    model: Literal["two_lines_smoothed"]
+    c1: float
+    c2: float
+    c3: float
+    c4: float
+    delta_m: float = Field(gt=0, description="Width of the transition (magnitude units)")
+
+
+class GeneralizedSection(_CombinedSection):
+    model: Literal["generalized"]
+    c1: float
+    c2: float
+    c3: float
+    c4: float
+    h_ratio: float = Field(gt=0, description="h at the transition over the lines' value")
+
+
+class Stafford2022FiniteFaultSection(_CombinedSection):
+    model: Literal["stafford_2022"]
+    h_alpha: float
+    h_beta: float
+    h_gamma: float
+    h_delta: float
+    h_epsilon: float
+
+
+FiniteFaultSection = Annotated[
+    NoFiniteFaultSection
+    | OneLineSection
+    | TwoLinesSection
+    | TwoLinesSmoothedSection
+    | GeneralizedSection
+    | Stafford2022FiniteFaultSection,
+    Field(discriminator="model"),
+]
+"""The ``[finite_fault]`` table."""
 
 
 class SegmentSection(_Section):
@@ -300,54 +354,107 @@ class SegmentSection(_Section):
         return SpreadingSegment(**self.model_dump())
 
 
-class SpreadingSection(_Section):
-    model: SpreadingModel = SpreadingModel.HINGED
+class _SpreadingSection(_ModelSection):
+    registry = SPREADING_MODELS
+
+
+class HingedSection(_SpreadingSection):
+    model: Literal["hinged"]
+    segments: tuple[SegmentSection, ...] = Field(min_length=1)
     r_ref: float = Field(1.0, gt=0)
-    segments: tuple[SegmentSection, ...] = ()
-    gamma1: float = 0.0
-    r_t: float = 0.0
-    gamma2: float = 0.0
-    g_ratio: float = Field(1.0, gt=0)
-    frequency_dependent: tuple[float, float, float, float, float, float] = (
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-    )
-
-    def build(self) -> Spreading:
-        data = self.model_dump(exclude={"segments"})
-        return Spreading(segments=tuple(s.build() for s in self.segments), **data)
 
 
-class QSection(_Section):
-    model: QModel = QModel.PIECEWISE
-    c_q: float = Field(3.5, gt=0)
-    fr1: float = 1.0
-    qr1: float = 0.0
+class Atkinson2011Section(_SpreadingSection):
+    model: Literal["atkinson_2011"]
+
+
+class BooreTrialSection(_SpreadingSection):
+    model: Literal["boore_trial"]
+    r1: float = Field(gt=1, description="Distance where the far slope starts (km)")
+    slope_lf: float
+    slope_hf: float
+    slope_far: float
+    ft1: float = Field(gt=0)
+    ft2: float = Field(gt=0)
+
+
+class Atkinson2012Section(_SpreadingSection):
+    model: Literal["atkinson_2012"]
+    r_ref: float = Field(1.0, gt=0)
+
+
+class AtkinsonBoore2014Section(_SpreadingSection):
+    model: Literal["atkinson_boore_2014"]
+    h: float = Field(gt=0, lt=50)
+    r_ref: float = Field(1.0, gt=0)
+    fortran_compat: bool = False
+
+
+class AtkinsonBoore2014R10Section(_SpreadingSection):
+    model: Literal["atkinson_boore_2014_r10"]
+    h: float = Field(gt=0, lt=50)
+    r_ref: float = Field(1.0, gt=0)
+    fortran_compat: bool = False
+
+
+class StaffordGeneralizedSection(_SpreadingSection):
+    model: Literal["stafford_generalized"]
+    gamma1: float
+    r_t: float = Field(gt=0, description="Transition distance (km)")
+    gamma2: float
+    g_ratio: float = Field(gt=0)
+    r_ref: float = Field(1.0, gt=0)
+
+
+class StaffordOptimalSection(_SpreadingSection):
+    model: Literal["stafford_optimal"]
+    gamma1: float
+    r_t: float = Field(gt=0, description="Transition distance (km)")
+    gamma2: float
+    r_ref: float = Field(1.0, gt=0)
+
+
+SpreadingSection = Annotated[
+    HingedSection
+    | Atkinson2011Section
+    | BooreTrialSection
+    | Atkinson2012Section
+    | AtkinsonBoore2014Section
+    | AtkinsonBoore2014R10Section
+    | StaffordGeneralizedSection
+    | StaffordOptimalSection,
+    Field(discriminator="model"),
+]
+"""The ``[spreading]`` table."""
+
+
+class _QSection(_ModelSection):
+    registry = Q_MODELS
+    c_q: float = Field(3.5, gt=0, description="Velocity in the path factor (km/s)")
+
+
+class PiecewiseQSection(_QSection):
+    model: Literal["piecewise"]
+    qr1: float = Field(gt=0)
     s1: float = 0.0
-    ft1: float = 1.0
-    ft2: float = 1.0
-    fr2: float = 1.0
-    qr2: float = 0.0
+    fr1: float = Field(1.0, gt=0)
+    qr2: float = Field(gt=0)
     s2: float = 0.0
-    q0: float = 0.0
-    eta_a: float = 0.0
-    eta_b: float = 0.0
-    eta_g: float = 0.0
+    fr2: float = Field(1.0, gt=0)
+    ft1: float = Field(1.0, gt=0)
+    ft2: float = Field(1.0, gt=0)
 
-    @model_validator(mode="after")
-    def _check_positive_q(self) -> QSection:
-        if self.model is QModel.PIECEWISE and (self.qr1 <= 0 or self.qr2 <= 0):
-            raise ValueError("piecewise Q needs qr1 > 0 and qr2 > 0")
-        if self.model is QModel.STAFFORD_2022 and self.q0 <= 0:
-            raise ValueError("stafford_2022 Q needs q0 > 0")
-        return self
 
-    def build(self) -> Q:
-        return Q(**self.model_dump())
+class Stafford2022QSection(_QSection):
+    model: Literal["stafford_2022"]
+    q0: float = Field(gt=0)
+    eta_a: float
+    eta_b: float
+    eta_g: float
+
+
+QSection = Annotated[PiecewiseQSection | Stafford2022QSection, Field(discriminator="model")]
+"""The ``[q]`` table."""
 
 
 class PathDurationSection(_Section):
@@ -527,7 +634,9 @@ class RunFile(_Section):
     title: str = ""
     medium: MediumSection
     source: SourceSection
-    finite_fault: FiniteFaultSection = Field(default_factory=FiniteFaultSection)
+    finite_fault: FiniteFaultSection = Field(
+        default_factory=lambda: NoFiniteFaultSection(model="none")
+    )
     spreading: SpreadingSection
     q: QSection
     path_duration: PathDurationSection
@@ -625,29 +734,38 @@ def load_config(path: str | Path) -> RunConfig:
         raise ConfigError(f"{path}: {err}") from err
 
 
+_MODEL_TYPES = (SourceSpectrum, StressModel, FiniteFaultFactor, GeometricalSpreading, QModel)
+"""Classes written as a table that starts with their ``model`` name."""
+
+_COMMON_KEYS = ("c_q", "duration_weight_fa", "duration_weight_fb")
+"""Keys written after a model's own parameters."""
+
+
 def _plain(value: Any) -> Any:
     """Turn dataclass contents into TOML-writable values."""
+    if isinstance(value, _MODEL_TYPES):
+        return _model_table(value)
+    if is_dataclass(value) and not isinstance(value, type):
+        return {
+            f.name: _plain(getattr(value, f.name))
+            for f in fields(value)
+            if getattr(value, f.name) is not None
+        }
     if isinstance(value, Enum):
         return value.value
-    if isinstance(value, dict):
-        return {k: _plain(v) for k, v in value.items() if v is not None}
     if isinstance(value, list | tuple):
         return [_plain(v) for v in value]
     return value
 
 
-def _model_table(obj: SourceSpectrum | StressModel) -> dict[str, Any]:
-    """Turn a source or stress model into a table that starts with its ``model``."""
+def _model_table(obj: Any) -> dict[str, Any]:
+    """Turn a model object into a table that starts with its ``model`` name."""
     table: dict[str, Any] = {"model": obj.name}
-    # The model's own parameters first, then the duration weights it inherits
-    names = [f.name for f in fields(obj)]  # type: ignore[arg-type]
-    weights = [n for n in names if n.startswith("duration_weight_")]
-    for name in [n for n in names if n not in weights] + weights:
-        value = getattr(obj, name)
-        if isinstance(value, SourceSpectrum | StressModel):
-            table[name] = _model_table(value)
-        else:
-            table[name] = _plain(value)
+    # The model's own parameters first, then those every model of its kind has
+    names = [f.name for f in fields(obj)]
+    common = [n for n in names if n in _COMMON_KEYS]
+    for name in [n for n in names if n not in common] + common:
+        table[name] = _plain(getattr(obj, name))
     return table
 
 
@@ -657,11 +775,8 @@ def dumps_config(config: RunConfig) -> str:
     Reading the text back with :func:`parse_config` gives an equal
     ``RunConfig``.
     """
-    params = _plain(asdict(config.params))
-    title = params.pop("title")
-    params["source"] = _model_table(config.params.source)
-    doc: dict[str, Any] = {"schema_version": SCHEMA_VERSION, "title": title}
-    doc.update(params)
-    doc["scenarios"] = _plain(asdict(config.scenarios))
-    doc["output"] = _plain(asdict(config.output))
+    doc: dict[str, Any] = {"schema_version": SCHEMA_VERSION}
+    doc.update(_plain(config.params))
+    doc["scenarios"] = _plain(config.scenarios)
+    doc["output"] = _plain(config.output)
     return tomli_w.dumps(doc)

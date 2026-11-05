@@ -25,7 +25,7 @@ The models are picked by name in a TOML run file (``model =
 "single_corner"``); :data:`SOURCE_MODELS` maps each name to its class. The
 Fortran ``numsource`` of each model is given in its docstring.
 
-Each shape is computed by a compiled kernel (:class:`ShapeKernel`) that
+Each shape is computed by a compiled kernel (:class:`pysmsim._jit.Kernel`) that
 takes the frequencies and the numbers from :meth:`~SourceSpectrum.shape_args`;
 the plain NumPy version of each kernel is kept as its twin for the tests.
 
@@ -48,14 +48,13 @@ from __future__ import annotations
 
 import math
 from abc import ABC, abstractmethod
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import ClassVar
 
 import numpy as np
 import numpy.typing as npt
 
-from pysmsim._jit import jit
+from pysmsim._jit import Kernel, kernel
 from pysmsim.spectrum.stress import StressModel
 
 __all__ = [
@@ -72,7 +71,6 @@ __all__ = [
     "JiArchuleta2020",
     "Joyner1984",
     "JoynerENA",
-    "ShapeKernel",
     "SingleCorner",
     "SourceSpectrum",
     "SourceTerms",
@@ -152,24 +150,6 @@ class SourceTerms:
 # Numba can compile it and a compiled RV integrand can call it.
 
 
-@dataclass(frozen=True, slots=True)
-class ShapeKernel:
-    """A source-shape kernel, compiled and as its NumPy twin.
-
-    Both are called as ``kernel(f, *source.shape_args(terms))``, with ``f``
-    a one-dimensional array.
-    """
-
-    numpy: Callable[..., FloatArray]
-    """The plain NumPy function."""
-    compiled: Callable[..., FloatArray]
-    """The same function compiled by Numba."""
-
-
-def _kernel(func: Callable[..., FloatArray]) -> ShapeKernel:
-    return ShapeKernel(numpy=func, compiled=jit(func))
-
-
 def _single_corner_shape(f: FloatArray, fa: float, pf_a: float, pd_a: float) -> FloatArray:
     """1/(1 + (f/fa)**pf_a)**pd_a."""
     return 1.0 / (1.0 + (f / fa) ** pf_a) ** pd_a
@@ -221,14 +201,14 @@ def _ji_archuleta_shape(f: FloatArray, fa: float, fb: float) -> FloatArray:
     return 1.0 / ((1.0 + (f / fa) ** 4) ** 0.25 * (1.0 + (f / fb) ** 4) ** 0.25)
 
 
-_SINGLE_CORNER_KERNEL = _kernel(_single_corner_shape)
-_JOYNER_KERNEL = _kernel(_joyner_shape)
-_ADDITIVE_OMEGA_SQUARED_KERNEL = _kernel(_additive_omega_squared_shape)
-_HADDON_KERNEL = _kernel(_haddon_shape)
-_BOATWRIGHT_CHOY_KERNEL = _kernel(_boatwright_choy_shape)
-_MULTIPLICATIVE_KERNEL = _kernel(_multiplicative_shape)
-_ADDITIVE_KERNEL = _kernel(_additive_shape)
-_JI_ARCHULETA_KERNEL = _kernel(_ji_archuleta_shape)
+_SINGLE_CORNER_KERNEL = kernel(_single_corner_shape)
+_JOYNER_KERNEL = kernel(_joyner_shape)
+_ADDITIVE_OMEGA_SQUARED_KERNEL = kernel(_additive_omega_squared_shape)
+_HADDON_KERNEL = kernel(_haddon_shape)
+_BOATWRIGHT_CHOY_KERNEL = kernel(_boatwright_choy_shape)
+_MULTIPLICATIVE_KERNEL = kernel(_multiplicative_shape)
+_ADDITIVE_KERNEL = kernel(_additive_shape)
+_JI_ARCHULETA_KERNEL = kernel(_ji_archuleta_shape)
 
 
 # --- Base classes -------------------------------------------------------------
@@ -246,7 +226,7 @@ class SourceSpectrum(ABC):
 
     name: ClassVar[str]
     """The name that selects the model in a run file."""
-    kernel: ClassVar[ShapeKernel]
+    kernel: ClassVar[Kernel]
     """The kernel that computes the shape."""
 
     @abstractmethod
@@ -332,7 +312,7 @@ class SingleCorner(WeightedDuration):
     """
 
     name: ClassVar[str] = "single_corner"
-    kernel: ClassVar[ShapeKernel] = _SINGLE_CORNER_KERNEL
+    kernel: ClassVar[Kernel] = _SINGLE_CORNER_KERNEL
 
     stress: StressModel
     pf_a: float = 2.0
@@ -376,7 +356,7 @@ class Joyner1984(WeightedDuration):
     """
 
     name: ClassVar[str] = "joyner_1984"
-    kernel: ClassVar[ShapeKernel] = _JOYNER_KERNEL
+    kernel: ClassVar[Kernel] = _JOYNER_KERNEL
 
     stress: StressModel
     magnitude_hinge: float
@@ -433,7 +413,7 @@ class TwoCornerMultiplicative(WeightedDuration):
     """
 
     name: ClassVar[str] = "two_corner_multiplicative"
-    kernel: ClassVar[ShapeKernel] = _MULTIPLICATIVE_KERNEL
+    kernel: ClassVar[Kernel] = _MULTIPLICATIVE_KERNEL
 
     stress: StressModel
     log10_fa: tuple[float, float, float]
@@ -485,7 +465,7 @@ class TwoCornerAdditive(WeightedDuration):
     """
 
     name: ClassVar[str] = "two_corner_additive"
-    kernel: ClassVar[ShapeKernel] = _ADDITIVE_KERNEL
+    kernel: ClassVar[Kernel] = _ADDITIVE_KERNEL
 
     stress: StressModel
     log10_fa: tuple[float, float, float]
@@ -570,7 +550,7 @@ class EmpiricalAdditiveTwoCorner(_FixedCorners):
     have no parameters besides the duration weights.
     """
 
-    kernel: ClassVar[ShapeKernel] = _ADDITIVE_OMEGA_SQUARED_KERNEL
+    kernel: ClassVar[Kernel] = _ADDITIVE_OMEGA_SQUARED_KERNEL
 
     m_single: ClassVar[float] = -math.inf
     """Single-corner at or below this magnitude."""
@@ -668,7 +648,7 @@ class Haddon1996(_FixedCorners):
     """
 
     name: ClassVar[str] = "haddon_1996"
-    kernel: ClassVar[ShapeKernel] = _HADDON_KERNEL
+    kernel: ClassVar[Kernel] = _HADDON_KERNEL
 
     def terms(self, magnitude: float, shear_velocity: float) -> SourceTerms:
         """M0 and corner frequencies at a magnitude; there is no stress."""
@@ -686,7 +666,7 @@ class BoatwrightChoy(_FixedCorners):
     """
 
     name: ClassVar[str] = "boatwright_choy"
-    kernel: ClassVar[ShapeKernel] = _BOATWRIGHT_CHOY_KERNEL
+    kernel: ClassVar[Kernel] = _BOATWRIGHT_CHOY_KERNEL
 
     def terms(self, magnitude: float, shear_velocity: float) -> SourceTerms:
         """M0 and corner frequencies at a magnitude; there is no stress."""
@@ -707,7 +687,7 @@ class JoynerENA(_FixedCorners):
     """
 
     name: ClassVar[str] = "joyner_ena"
-    kernel: ClassVar[ShapeKernel] = _JOYNER_KERNEL
+    kernel: ClassVar[Kernel] = _JOYNER_KERNEL
 
     def terms(self, magnitude: float, shear_velocity: float) -> SourceTerms:
         """M0 and corner frequencies at a magnitude; there is no stress."""
@@ -733,7 +713,7 @@ class JiArchuleta2020(SourceSpectrum):
     """
 
     name: ClassVar[str] = "ji_archuleta_2020"
-    kernel: ClassVar[ShapeKernel] = _JI_ARCHULETA_KERNEL
+    kernel: ClassVar[Kernel] = _JI_ARCHULETA_KERNEL
 
     def terms(self, magnitude: float, shear_velocity: float) -> SourceTerms:
         """M0, corner frequencies and equivalent single-corner stress at a magnitude."""

@@ -7,20 +7,15 @@ from pysmsim.params import (
     HighCutModel,
     LowCutFilter,
     Medium,
+    OscillatorCorrection,
     PathDuration,
-    Q,
-    QModel,
     Site,
-    Spreading,
-    SpreadingModel,
-    SpreadingSegment,
 )
 from pysmsim.scenario import Scenario, ScenarioGrid
 
 
 def test_enums_take_their_string_values() -> None:
-    assert SpreadingModel("hinged") is SpreadingModel.HINGED
-    assert len(SpreadingModel) == 8
+    assert OscillatorCorrection("bt15_wna") is OscillatorCorrection.BT15_WNA
 
 
 def test_medium_defaults() -> None:
@@ -28,30 +23,6 @@ def test_medium_defaults() -> None:
     assert medium.partition == 0.707
     assert medium.radiation == 0.55
     assert medium.free_surface == 2.0
-
-
-def test_hinged_spreading_needs_increasing_segments() -> None:
-    with pytest.raises(ValueError, match="strictly increasing"):
-        Spreading(
-            segments=(
-                SpreadingSegment(r_start=40.0, a=-0.5),
-                SpreadingSegment(r_start=1.0, a=-1.0),
-            )
-        )
-
-
-def test_stafford_spreading_needs_no_segments() -> None:
-    spreading = Spreading(
-        model=SpreadingModel.STAFFORD_OPTIMAL, gamma1=-1.1611, r_t=50.0, gamma2=-0.5
-    )
-    assert spreading.segments == ()
-
-
-def test_stafford_q_needs_no_reference_frequencies() -> None:
-    q = Q(model=QModel.STAFFORD_2022, fr1=-1.0, q0=205.4, eta_a=0.6884, eta_b=0.1354, eta_g=5.1278)
-    assert q.q0 == 205.4
-    with pytest.raises(ValueError, match="positive fr1"):
-        Q(model=QModel.PIECEWISE, fr1=-1.0, qr1=180.0, qr2=180.0)
 
 
 def test_path_duration_and_site_checks() -> None:
