@@ -11,6 +11,7 @@ from pysmsim.io.config import ConfigError, dumps_config, load_config, parse_conf
 from pysmsim.params import OscillatorCorrection
 from pysmsim.scenario import DistanceMetric, RjbToRrup
 from pysmsim.spectrum.attenuation import PiecewiseQ, Stafford2022Q
+from pysmsim.spectrum.filters import NoHighCut, QuarterCosineHighCut, RaisedCosineHighCut
 from pysmsim.spectrum.finite_fault import (
     Generalized,
     NoFiniteFault,
@@ -70,6 +71,7 @@ def test_defaults_fill_optional_sections(example_data: dict[str, Any]) -> None:
     config = parse_config(example_data)
     assert config.params.finite_fault == NoFiniteFault()
     assert config.params.filters.low_cut.fcut == 0.0
+    assert config.params.filters.high_cut == NoHighCut()
 
 
 def test_dataclasses_are_frozen() -> None:
@@ -227,5 +229,48 @@ def test_path_keys_of_other_models_rejected(
     example_data: dict[str, Any], change: Any, expected: str
 ) -> None:
     change(example_data)
+    with pytest.raises(ConfigError, match=expected):
+        parse_config(example_data)
+
+
+@pytest.mark.parametrize(
+    ("table", "expected"),
+    [
+        ({"model": "none"}, NoHighCut()),
+        (
+            {"model": "raised_cosine", "f1": 25.0, "f2": 50.0},
+            RaisedCosineHighCut(f1=25.0, f2=50.0),
+        ),
+        (
+            {"model": "quarter_cosine", "f1": 5.0, "f2": 40.0, "eta": 0.5},
+            QuarterCosineHighCut(f1=5.0, f2=40.0, eta=0.5),
+        ),
+    ],
+)
+def test_high_cut_models_by_name(
+    example_data: dict[str, Any], table: dict[str, Any], expected: object
+) -> None:
+    example_data["filters"]["high_cut"] = table
+    config = parse_config(example_data)
+    assert config.params.filters.high_cut == expected
+    assert parse_config(tomllib.loads(dumps_config(config))) == config
+
+
+@pytest.mark.parametrize(
+    ("table", "expected"),
+    [
+        ({"model": "none", "f1": 25.0}, "filters.high_cut.none.f1"),
+        (
+            {"model": "raised_cosine", "f1": 25.0},
+            "filters.high_cut.raised_cosine.f2: Field required",
+        ),
+        ({"model": "raised_cosine", "f1": 50.0, "f2": 25.0}, "0 < f1 < f2"),
+        ({"model": "half_cosine"}, "filters.high_cut: Input tag"),
+    ],
+)
+def test_invalid_high_cut_rejected(
+    example_data: dict[str, Any], table: dict[str, Any], expected: str
+) -> None:
+    example_data["filters"]["high_cut"] = table
     with pytest.raises(ConfigError, match=expected):
         parse_config(example_data)

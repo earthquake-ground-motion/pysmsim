@@ -6,11 +6,13 @@ dataclasses: they hold settings only, never values derived from a magnitude
 or distance, so one ``Params`` object can be shared by every scenario.
 
 Options are chosen by name. The source spectrum, finite-fault factor,
-geometrical spreading and Q are each one of the classes in the modules of
-:mod:`pysmsim.spectrum` (for example
+geometrical spreading, Q and high-cut filter are each one of the classes in
+the modules of :mod:`pysmsim.spectrum` (for example
 :class:`~pysmsim.spectrum.source.SingleCorner`), each holding only its own
 parameters; the other options are string enums, each listing the Fortran
-code it replaces. Units follow SMSIM: density in g/cm^3, shear
+code it replaces. The site terms and the filters are
+:class:`~pysmsim.spectrum.site.Site` and
+:class:`~pysmsim.spectrum.filters.Filters`. Units follow SMSIM: density in g/cm^3, shear
 velocity in km/s, distance in km, stress in bars, frequency in Hz.
 
 The objects can be built directly, for example in a notebook::
@@ -28,22 +30,19 @@ from enum import StrEnum
 from itertools import pairwise
 
 from pysmsim.spectrum.attenuation import QModel
+from pysmsim.spectrum.filters import Filters
 from pysmsim.spectrum.finite_fault import FiniteFaultFactor, NoFiniteFault
+from pysmsim.spectrum.site import Site
 from pysmsim.spectrum.source import SourceSpectrum
 from pysmsim.spectrum.spreading import GeometricalSpreading
 
 __all__ = [
-    "Filters",
-    "HighCutFilter",
-    "HighCutModel",
-    "LowCutFilter",
     "Medium",
     "NoiseDistribution",
     "OscillatorCorrection",
     "Params",
     "PathDuration",
     "RVConfig",
-    "Site",
     "TDConfig",
     "WindowShape",
 ]
@@ -107,95 +106,6 @@ class PathDuration:
         if not self.distances:
             raise ValueError("path duration needs at least one knot")
         _check_increasing("path-duration distances", self.distances)
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class Site:
-    """Crustal amplification and high-frequency diminution.
-
-    Fortran: ``namps, famp, amp`` and ``fm, akappa, dkappadmag, amagkref``.
-
-    Parameters
-    ----------
-    amp_frequencies, amplifications : tuple of float
-        Crustal amplification, interpolated linearly in frequency and
-        logarithmically in amplitude.
-    kappa0 : float
-        Kappa (s) at ``kappa_magnitude_ref``.
-    dkappa_dmag : float
-        Change of kappa per magnitude unit.
-    kappa_magnitude_ref : float
-        Reference magnitude for kappa.
-    fmax : float
-        fmax (Hz); 0 means not used.
-    """
-
-    amp_frequencies: tuple[float, ...]
-    amplifications: tuple[float, ...]
-    kappa0: float = 0.0
-    dkappa_dmag: float = 0.0
-    kappa_magnitude_ref: float = 0.0
-    fmax: float = 0.0
-
-    def __post_init__(self) -> None:
-        _check_same_length(
-            "amp_frequencies and amplifications", self.amp_frequencies, self.amplifications
-        )
-        if not self.amp_frequencies:
-            raise ValueError("site amplification needs at least one point")
-        _check_increasing("amp_frequencies", self.amp_frequencies)
-        if any(a <= 0 for a in self.amplifications):
-            raise ValueError("amplifications must be positive")
-
-
-class HighCutModel(StrEnum):
-    """High-cut filter shape (Fortran ``itype_hcfilt``)."""
-
-    NONE = "none"
-    """0: no filter."""
-    RAISED_COSINE = "raised_cosine"
-    """1: raised half cycle of a cosine."""
-    QUARTER_COSINE = "quarter_cosine"
-    """2: quarter cycle of a cosine."""
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class LowCutFilter:
-    """Acausal Butterworth low-cut filter (``fcut, nslope``).
-
-    ``fcut`` = 0 means no filter. ``order`` is the order of each of the two
-    passes (Fortran ``norder = nslope/2``), so the filter is
-    1/(1 + (fcut/f)**(2*order)).
-    """
-
-    fcut: float = 0.0
-    order: int = 4
-
-    def __post_init__(self) -> None:
-        if self.order < 2 or self.order % 2:
-            raise ValueError("low-cut order must be an even number of at least 2")
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class HighCutFilter:
-    """High-cut filter between ``f1`` and ``f2`` (``fhc1, fhc2, eta_hcfilt``)."""
-
-    model: HighCutModel = HighCutModel.NONE
-    f1: float = 0.0
-    f2: float = 0.0
-    eta: float = 1.0
-
-    def __post_init__(self) -> None:
-        if self.model is not HighCutModel.NONE and not 0 < self.f1 < self.f2:
-            raise ValueError("high-cut filter needs 0 < f1 < f2")
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class Filters:
-    """Low-cut and high-cut filters applied to the spectrum."""
-
-    low_cut: LowCutFilter = field(default_factory=LowCutFilter)
-    high_cut: HighCutFilter = field(default_factory=HighCutFilter)
 
 
 class OscillatorCorrection(StrEnum):

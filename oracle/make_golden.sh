@@ -27,6 +27,12 @@
 # and Q lines replaced) at M 3, 5 and 7 and Rrup 0.5, 5, 30, 55 and 200 km,
 # on 21 frequencies from 0.01 to 100 Hz, saved as
 # path/<case>.M<m>.R<rrup>.txt.
+# And site/: factor_dump for each synthetic site and filter case in
+# oracle/inputs/site_cases.txt (ofr.params with the crustal-amplification,
+# diminution, low-cut and high-cut lines replaced) at M 4, 6 and 8, Rrup
+# 20 km, on 41 frequencies from 0.01 to 100 Hz, saved as
+# site/<case>.M<m>.txt; and site_lines/: the site and filter value lines of
+# each shipped .params file, which the tests read in place of the file.
 # The control files take k0 and stress from the params file; their headers
 # list the magnitudes, distances, periods and frequencies.
 #
@@ -63,8 +69,9 @@ mkdir -p "$RUN_DIR"
 mkdir -p "$OUT_DIR"
 OUT_DIR=$(cd "$OUT_DIR" && pwd)
 rm -rf "$OUT_DIR/rv" "$OUT_DIR/fas" "$OUT_DIR/td" "$OUT_DIR/factors" "$OUT_DIR/source" \
-    "$OUT_DIR/path"
-mkdir -p "$OUT_DIR/rv" "$OUT_DIR/fas" "$OUT_DIR/factors" "$OUT_DIR/source" "$OUT_DIR/path"
+    "$OUT_DIR/path" "$OUT_DIR/site" "$OUT_DIR/site_lines"
+mkdir -p "$OUT_DIR/rv" "$OUT_DIR/fas" "$OUT_DIR/factors" "$OUT_DIR/source" "$OUT_DIR/path" \
+    "$OUT_DIR/site" "$OUT_DIR/site_lines"
 [ "$SKIP_TD" = 1 ] || mkdir -p "$OUT_DIR/td"
 
 # prepare <dir>: params files with bare .pars file names (they are written
@@ -174,6 +181,48 @@ while IFS='|' read -r name ff spreading q; do
             cp "$dir/$out" "$OUT_DIR/path/$out"
         done
     done
+done
+
+# Synthetic site and filter cases: replace the crustal-amplification table
+# (the 23rd value line, namps, and the namps lines after it), the
+# diminution line, the low-cut line and the high-cut line of ofr.params.
+# The comment lines before them are kept, as skipcmnt needs them.
+dir="$RUN_DIR/site"
+prepare "$dir"
+grep -v '^ *#' "$ORACLE_DIR/inputs/site_cases.txt" | grep -v '^ *$' |
+while IFS='|' read -r name amps dimin lowcut highcut; do
+    name=$(echo "$name" | tr -d ' ')
+    echo "site: $name"
+    awk -v amps="$amps" -v dimin="$dimin" -v lowcut="$lowcut" -v highcut="$highcut" '
+        /^ *!/ { print; next }
+        { n++ }
+        n == 23 {
+            k = split(amps, points, ";")
+            print " " k
+            for (i = 1; i <= k; i++) print " " points[i]
+            namps = $1
+            next
+        }
+        n > 23 && n <= 23 + namps { next }
+        n == 24 + namps { print " " dimin; next }
+        n == 25 + namps { print " " lowcut; next }
+        n == 26 + namps { print " " highcut; next }
+        { print }' "$dir/ofr.params" > "$dir/$name.params"
+    for m in 4.0 6.0 8.0; do
+        out="$name.M$m.txt"
+        (cd "$dir" && "$BIN_DIR/factor_dump" "$name.params" "$m" 20.0 "$out" 41 0.01 100.0 \
+            > /dev/null)
+        cp "$dir/$out" "$OUT_DIR/site/$out"
+    done
+done
+
+# Site and filter value lines of the shipped .params files: from the
+# crustal-amplification comment to the RV comment, without comments
+for f in "$SMSIM_DIR"/params_and_pars_files/*.params; do
+    stem=$(basename "$f" .params)
+    tr -d '\r' < "$f" |
+        awk '/^!CRUSTAL AMPLIFICATION/ { on = 1 } /^!RV PARAMS/ { on = 0 }
+             on && !/^ *!/ { sub(/^ +/, ""); print }' > "$OUT_DIR/site_lines/$stem.txt"
 done
 
 cp "$BIN_DIR/BUILD_INFO.txt" "$OUT_DIR/BUILD_INFO.txt"
