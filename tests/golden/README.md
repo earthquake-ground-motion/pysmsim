@@ -28,6 +28,7 @@ oscillator corrections for WNA and ENA. The control files in
 | --- | --- | --- | --- |
 | `factors/` | `factor_dump` | M 4, 6, 8; Rrup 5, 20, 100 km; 41 frequencies, 0.01-100 Hz | 41 (one file per M and Rrup) |
 | `fas/` | `fmrsk_loop_fas_drvr` | M 4-8 (step 1); Rjb 1, 5, 20, 50, 100, 300 km; 21 frequencies, 0.01-100 Hz | 630 |
+| `path/` | `factor_dump` | 17 synthetic path cases (below); M 3, 5, 7; Rrup 0.5, 5, 30, 55, 200 km; 21 frequencies, 0.01-100 Hz | 21 (one file per case, M and Rrup) |
 | `rv/` | `tmrsk_loop_rv_drvr` | M 4-8 (step 1); Rjb 1, 5, 20, 50, 100, 300 km; PGV, PGA and PSA at 0.01, 0.1, 0.3, 1, 3, 10 s (5% damping) | 240 |
 | `source/` | `factor_dump` | 18 synthetic source cases (below); M 2, 3, 4.5, 5, 6, 8; Rrup 20 km; 21 frequencies, 0.01-100 Hz | 21 (one file per case and M) |
 | `td/` | `tmrsk_loop_td_drvr` | M 4, 6, 8; Rjb 5, 20, 100 km; PGV, PGA and PSA at 0.01, 0.1, 0.2, 1, 2 s (5% damping); 800 simulations | 63 |
@@ -38,6 +39,14 @@ stress and spectral-scaling lines replaced, as listed in
 `oracle/inputs/source_cases.txt`. Cases with `quirk` in the name show SMSIM
 behaviour that pysmsim changes by default; the tests compare them with
 `fortran_compat=True`.
+
+The `path/` cases do the same for the finite-fault factor (forms 1, 2 and
+999, Stafford's form with Rps in quadrature), geometrical spreading
+(options 1-6, magnitude-dependent hinged slopes, r_ref = 2) and Q (constant,
+three-part, and Stafford's Q with a finite-fault factor so that Rps and Rrup
+differ). Each is `ofr.params` with the finite-fault, spreading and Q lines
+replaced, as listed in `oracle/inputs/path_cases.txt`. The tests compare the
+AB14 spreading cases (options 4 and 5) with `fortran_compat=True`.
 
 The loop programs convert Rjb to Rrup with the CY14 Ztor relation for a
 strike-slip fault (case 2 in the control files).

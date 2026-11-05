@@ -74,7 +74,8 @@ Units are cgs (cm, s, g/cm³), with distances in km and g = 981 cm/s².
 2. **Fix Fortran quirks by default.** Keep the original behaviour behind a
    `fortran_compat` flag, which the golden tests use. Each quirk is documented
    and has a named test. Known quirks:
-   - `q()` caches values on its first call (`firstcall_q`);
+   - `q()` caches values on its first call (`firstcall_q`), so later changes
+     to the Q parameters in the same run are ignored (pysmsim has no cache);
    - `wind_exp` recomputes only when `new_mr` is set;
    - `get_npts_for_td_calcs` overwrites `tshift` inside loops;
    - failures return sentinels (-999.9, -9.99) instead of raising errors;
@@ -85,7 +86,20 @@ Units are cgs (cm, s, g/cm³), with distances in km and g = 981 cm/s².
      and NaN corner frequencies with `hoerl`; pysmsim uses the named model);
    - for source model 12, the magnitude where eps = 1 is computed as
      -c1/c2, ignoring the reference magnitude of log10(eps)
-     (the `fortran_compat` field of `TwoCornerAdditive`).
+     (the `fortran_compat` field of `TwoCornerAdditive`);
+   - `gsprd_freq` (spreading options 4 and 5) uses 1.570796 for pi/2
+     (the `fortran_compat` field of `AtkinsonBoore2014` and
+     `AtkinsonBoore2014R10`; the effect is below 1e-6);
+   - spreading option 2 sets the shared `r_ref` to 1, which changes the
+     radiation constant of later scenarios if the params file gave another
+     value, and options 1 and 2 ignore `r_ref` while the radiation constant
+     still divides by it (pysmsim uses r_ref = 1 km for both models);
+   - `dimin` uses Rrup for the Stafford Q only when `fr1` is exactly -1,
+     though `q()` uses the Stafford form for any `fr1 < 0` (pysmsim's
+     `Stafford2022Q` always uses Rrup);
+   - `skipcmnt` always skips the line before the values it guards, comment
+     or not, so a params file without that comment line is misread (matters
+     for the converter).
 3. **One TOML input file per run.** It replaces the `.params`, `.ctl` and
    `.pars` files and is read with `tomllib`.
    - Settings are named keys, not positions.
@@ -95,9 +109,11 @@ Units are cgs (cm, s, g/cm³), with distances in km and g = 981 cm/s².
      `model` name, holding only the parameters it uses and defining its own
      behaviour; no if/elif chains over model types. The TOML section is a
      pydantic discriminated union on `model`, so keys another model uses are
-     rejected. Source and stress models (`pysmsim.spectrum.source`,
-     `pysmsim.spectrum.stress`) follow this; spreading, Q, finite-fault and
-     high-cut will follow it as their modules are written.
+     rejected. Source, stress, finite-fault, spreading and Q models
+     (`pysmsim.spectrum.source`, `.stress`, `.finite_fault`, `.spreading`,
+     `.attenuation`) follow this; the high-cut filter will follow it when
+     its module is written. Compiled kernels are `pysmsim._jit.Kernel`
+     objects (compiled function plus NumPy twin) named by the class.
    - The file carries `schema_version`.
    - A run can start from a preset (`base = "wna_bt15"`).
    - The BT15 and crustal-amp tables are bundled package data, chosen by name.

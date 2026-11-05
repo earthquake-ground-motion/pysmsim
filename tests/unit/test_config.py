@@ -8,14 +8,17 @@ from typing import Any
 import pytest
 
 from pysmsim.io.config import ConfigError, dumps_config, load_config, parse_config
-from pysmsim.params import (
-    FiniteFaultModel,
-    OscillatorCorrection,
-    QModel,
-    SpreadingModel,
-)
+from pysmsim.params import OscillatorCorrection
 from pysmsim.scenario import DistanceMetric, RjbToRrup
+from pysmsim.spectrum.attenuation import PiecewiseQ, Stafford2022Q
+from pysmsim.spectrum.finite_fault import (
+    Generalized,
+    NoFiniteFault,
+    RpsCombination,
+    TwoLinesSmoothed,
+)
 from pysmsim.spectrum.source import AtkinsonSilva2000, SingleCorner, TwoCornerAdditive
+from pysmsim.spectrum.spreading import AtkinsonBoore2014, Hinged, StaffordOptimal
 from pysmsim.spectrum.stress import HoerlStress, LogLinearStress
 
 EXAMPLE = Path(__file__).parents[2] / "examples" / "wna_bt15_example.toml"
@@ -35,10 +38,12 @@ def test_load_example() -> None:
     assert params.source == SingleCorner(
         stress=LogLinearStress(stress_ref=250.0, magnitude_ref=6.5)
     )
-    assert params.finite_fault.model is FiniteFaultModel.TWO_LINES_SMOOTHED
-    assert params.spreading.model is SpreadingModel.HINGED
+    assert params.finite_fault == TwoLinesSmoothed(
+        c1=-1.72, c2=0.43, c3=-0.405, c4=0.235, delta_m=2.0
+    )
+    assert isinstance(params.spreading, Hinged)
     assert [s.r_start for s in params.spreading.segments] == [1.0, 40.0]
-    assert params.q.model is QModel.PIECEWISE
+    assert params.q == PiecewiseQ(qr1=180.0, s1=0.45, qr2=180.0, s2=0.45, c_q=3.5)
     assert len(params.site.amp_frequencies) == 25
     assert params.rv.osc_correction is OscillatorCorrection.BT15_WNA
 
@@ -63,7 +68,7 @@ def test_defaults_fill_optional_sections(example_data: dict[str, Any]) -> None:
     for section in ("finite_fault", "filters", "rv", "td", "output"):
         del example_data[section]
     config = parse_config(example_data)
-    assert config.params.finite_fault.model is FiniteFaultModel.NONE
+    assert config.params.finite_fault == NoFiniteFault()
     assert config.params.filters.low_cut.fcut == 0.0
 
 
@@ -83,8 +88,11 @@ def test_dataclasses_are_frozen() -> None:
         (lambda d: d["source"].pop("stress"), "source.single_corner.stress"),
         (lambda d: d["source"]["stress"].update(c1=1.0), "stress.log_linear.c1"),
         (lambda d: d["medium"].update(density=-1.0), "medium.density"),
-        (lambda d: d["q"].update(qr1=0.0), "qr1 > 0"),
-        (lambda d: d["spreading"].update(segments=[]), "at least one segment"),
+        (lambda d: d["q"].update(qr1=0.0), "q.piecewise.qr1: Input should be greater than 0"),
+        (
+            lambda d: d["spreading"].update(segments=[]),
+            "spreading.hinged.segments: Tuple should have at least 1 item",
+        ),
         (lambda d: d["path_duration"].update(durations=[0.0, 2.4]), "same length"),
         (lambda d: d["site"].update(amp_frequencies=[1.0] * 25), "strictly increasing"),
         (lambda d: d["filters"]["low_cut"].update(order=3), "even number"),
@@ -145,3 +153,79 @@ def test_source_models_by_name(
     assert config.params.source == expected
     # and back through a TOML file
     assert parse_config(tomllib.loads(dumps_config(config))) == config
+
+
+@pytest.mark.parametrize(
+    ("section", "table", "expected"),
+    [
+        ("finite_fault", {"model": "none"}, NoFiniteFault()),
+        (
+            "finite_fault",
+            {
+                "model": "generalized",
+                "combination": "sum",
+                "c1": -1.72,
+                "c2": 0.43,
+                "c3": -0.405,
+                "c4": 0.235,
+                "h_ratio": 0.8939,
+            },
+            Generalized(
+                c1=-1.72,
+                c2=0.43,
+                c3=-0.405,
+                c4=0.235,
+                h_ratio=0.8939,
+                combination=RpsCombination.SUM,
+            ),
+        ),
+        (
+            "spreading",
+            {"model": "stafford_optimal", "gamma1": -1.1611, "r_t": 50.0, "gamma2": -0.5},
+            StaffordOptimal(gamma1=-1.1611, r_t=50.0, gamma2=-0.5),
+        ),
+        (
+            "spreading",
+            {"model": "atkinson_boore_2014", "h": 10.0, "fortran_compat": True},
+            AtkinsonBoore2014(h=10.0, fortran_compat=True),
+        ),
+        (
+            "q",
+            {
+                "model": "stafford_2022",
+                "q0": 205.4,
+                "eta_a": 0.6884,
+                "eta_b": 0.1354,
+                "eta_g": 5.1278,
+            },
+            Stafford2022Q(q0=205.4, eta_a=0.6884, eta_b=0.1354, eta_g=5.1278),
+        ),
+    ],
+)
+def test_path_models_by_name(
+    example_data: dict[str, Any], section: str, table: dict[str, Any], expected: object
+) -> None:
+    example_data[section] = table
+    config = parse_config(example_data)
+    assert getattr(config.params, section) == expected
+    assert parse_config(tomllib.loads(dumps_config(config))) == config
+
+
+@pytest.mark.parametrize(
+    ("change", "expected"),
+    [
+        (lambda d: d["spreading"].update(gamma1=-1.0), "spreading.hinged.gamma1"),
+        (lambda d: d["q"].update(q0=200.0), "q.piecewise.q0"),
+        (
+            lambda d: d["finite_fault"].update(h_ratio=0.9),
+            "finite_fault.two_lines_smoothed.h_ratio",
+        ),
+        (lambda d: d["finite_fault"].update(model="three_lines"), "finite_fault: Input tag"),
+    ],
+)
+def test_path_keys_of_other_models_rejected(
+    example_data: dict[str, Any], change: Any, expected: str
+) -> None:
+    change(example_data)
+    with pytest.raises(ConfigError, match=expected):
+        parse_config(example_data)

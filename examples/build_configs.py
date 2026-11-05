@@ -18,20 +18,18 @@ from pathlib import Path
 
 from pysmsim.io.config import RunConfig, dumps_config, load_config, parse_config
 from pysmsim.params import (
-    FiniteFault,
-    FiniteFaultModel,
     Medium,
     OscillatorCorrection,
     Params,
     PathDuration,
-    Q,
     RVConfig,
     Site,
-    Spreading,
-    SpreadingSegment,
 )
 from pysmsim.scenario import OutputSettings, ScenarioGrid
+from pysmsim.spectrum.attenuation import PiecewiseQ
+from pysmsim.spectrum.finite_fault import TwoLinesSmoothed
 from pysmsim.spectrum.source import SingleCorner
+from pysmsim.spectrum.spreading import Hinged, SpreadingSegment
 from pysmsim.spectrum.stress import LogLinearStress
 
 HERE = Path(__file__).parent
@@ -42,21 +40,20 @@ params = Params(
     title="Generic ENA rock",
     medium=Medium(density=2.8, shear_velocity=3.6),
     source=SingleCorner(stress=LogLinearStress(stress_ref=150.0, magnitude_ref=6.5)),
-    finite_fault=FiniteFault(
-        model=FiniteFaultModel.TWO_LINES_SMOOTHED,
+    finite_fault=TwoLinesSmoothed(
         c1=-1.8276,
         c2=0.43,
         c3=-0.5126,
         c4=0.235,
         delta_m=2.0,
     ),
-    spreading=Spreading(
+    spreading=Hinged(
         segments=(
             SpreadingSegment(r_start=1.0, a=-1.0),
             SpreadingSegment(r_start=50.0, a=-0.5),
         )
     ),
-    q=Q(qr1=410.0, s1=0.5, qr2=410.0, s2=0.5),
+    q=PiecewiseQ(qr1=410.0, s1=0.5, qr2=410.0, s2=0.5),
     path_duration=PathDuration(
         distances=(0.0, 15.0, 35.0, 50.0), durations=(0.0, 2.6, 17.5, 25.1), slope_beyond=0.111
     ),

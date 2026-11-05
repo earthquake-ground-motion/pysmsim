@@ -22,6 +22,11 @@
 # oracle/inputs/source_cases.txt (ofr.params with the source lines replaced)
 # at M 2, 3, 4.5, 5, 6 and 8, Rrup 20 km, on 21 frequencies from 0.01 to
 # 100 Hz, saved as source/<case>.M<m>.txt.
+# And path/: factor_dump for each synthetic path case in
+# oracle/inputs/path_cases.txt (ofr.params with the finite-fault, spreading
+# and Q lines replaced) at M 3, 5 and 7 and Rrup 0.5, 5, 30, 55 and 200 km,
+# on 21 frequencies from 0.01 to 100 Hz, saved as
+# path/<case>.M<m>.R<rrup>.txt.
 # The control files take k0 and stress from the params file; their headers
 # list the magnitudes, distances, periods and frequencies.
 #
@@ -57,8 +62,9 @@ rm -rf "$RUN_DIR"
 mkdir -p "$RUN_DIR"
 mkdir -p "$OUT_DIR"
 OUT_DIR=$(cd "$OUT_DIR" && pwd)
-rm -rf "$OUT_DIR/rv" "$OUT_DIR/fas" "$OUT_DIR/td" "$OUT_DIR/factors" "$OUT_DIR/source"
-mkdir -p "$OUT_DIR/rv" "$OUT_DIR/fas" "$OUT_DIR/factors" "$OUT_DIR/source"
+rm -rf "$OUT_DIR/rv" "$OUT_DIR/fas" "$OUT_DIR/td" "$OUT_DIR/factors" "$OUT_DIR/source" \
+    "$OUT_DIR/path"
+mkdir -p "$OUT_DIR/rv" "$OUT_DIR/fas" "$OUT_DIR/factors" "$OUT_DIR/source" "$OUT_DIR/path"
 [ "$SKIP_TD" = 1 ] || mkdir -p "$OUT_DIR/td"
 
 # prepare <dir>: params files with bare .pars file names (they are written
@@ -131,6 +137,42 @@ while IFS='|' read -r name shape stress scaling; do
         (cd "$dir" && "$BIN_DIR/factor_dump" "$name.params" "$m" 20.0 "$out" 21 0.01 100.0 \
             > /dev/null)
         cp "$dir/$out" "$OUT_DIR/source/$out"
+    done
+done
+
+# Synthetic path cases: replace the 7th value line (finite fault), the
+# spreading lines (8th to 14th) and the 15th (Q) of ofr.params. The comment
+# lines among the spreading lines are replaced by one "!" line before the
+# frequency-dependent parameters and one before r_ref: SMSIM's skipcmnt
+# always skips the line before those reads, comment or not.
+dir="$RUN_DIR/path"
+prepare "$dir"
+grep -v '^ *#' "$ORACLE_DIR/inputs/path_cases.txt" | grep -v '^ *$' |
+while IFS='|' read -r name ff spreading q; do
+    name=$(echo "$name" | tr -d ' ')
+    echo "path: $name"
+    awk -v ff="$ff" -v spreading="$spreading" -v q="$q" '
+        /^ *!/ { if (n < 8 || n >= 14) print; next }
+        { n++ }
+        n == 7 { print " " ff; next }
+        n == 8 {
+            k = split(spreading, lines, ";")
+            for (i = 1; i <= k; i++) {
+                if (i == 2 || i == 3) print "!"
+                print " " lines[i]
+            }
+            next
+        }
+        n > 8 && n < 15 { next }
+        n == 15 { print " " q; next }
+        { print }' "$dir/ofr.params" > "$dir/$name.params"
+    for m in 3.0 5.0 7.0; do
+        for rrup in 0.5 5.0 30.0 55.0 200.0; do
+            out="$name.M$m.R$rrup.txt"
+            (cd "$dir" && "$BIN_DIR/factor_dump" "$name.params" "$m" "$rrup" "$out" 21 0.01 100.0 \
+                > /dev/null)
+            cp "$dir/$out" "$OUT_DIR/path/$out"
+        done
     done
 done
 

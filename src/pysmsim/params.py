@@ -5,8 +5,9 @@ Each class here holds one group of settings from an SMSIM ``.params`` file
 dataclasses: they hold settings only, never values derived from a magnitude
 or distance, so one ``Params`` object can be shared by every scenario.
 
-Options are chosen by name. The source spectrum is one of the classes in
-:mod:`pysmsim.spectrum.source` (for example
+Options are chosen by name. The source spectrum, finite-fault factor,
+geometrical spreading and Q are each one of the classes in the modules of
+:mod:`pysmsim.spectrum` (for example
 :class:`~pysmsim.spectrum.source.SingleCorner`), each holding only its own
 parameters; the other options are string enums, each listing the Fortran
 code it replaces. Units follow SMSIM: density in g/cm^3, shear
@@ -26,12 +27,13 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from itertools import pairwise
 
+from pysmsim.spectrum.attenuation import QModel
+from pysmsim.spectrum.finite_fault import FiniteFaultFactor, NoFiniteFault
 from pysmsim.spectrum.source import SourceSpectrum
+from pysmsim.spectrum.spreading import GeometricalSpreading
 
 __all__ = [
     "Filters",
-    "FiniteFault",
-    "FiniteFaultModel",
     "HighCutFilter",
     "HighCutModel",
     "LowCutFilter",
@@ -40,14 +42,8 @@ __all__ = [
     "OscillatorCorrection",
     "Params",
     "PathDuration",
-    "Q",
-    "QModel",
     "RVConfig",
-    "RpsCombination",
     "Site",
-    "Spreading",
-    "SpreadingModel",
-    "SpreadingSegment",
     "TDConfig",
     "WindowShape",
 ]
@@ -93,187 +89,6 @@ class Medium:
     def __post_init__(self) -> None:
         if self.density <= 0 or self.shear_velocity <= 0:
             raise ValueError("density and shear_velocity must be positive")
-
-
-class RpsCombination(StrEnum):
-    """How the finite-fault factor h is combined with distance (``iflag_f_ff``)."""
-
-    QUADRATURE = "quadrature"
-    """1: Rps = sqrt(R**2 + h**2)."""
-    SUM = "sum"
-    """2: Rps = R + h."""
-
-
-class FiniteFaultModel(StrEnum):
-    """Magnitude dependence of the finite-fault factor h (``nlines_f_ff``)."""
-
-    NONE = "none"
-    """0: no finite-fault factor; Rps = R."""
-    ONE_LINE = "one_line"
-    """1: log10(h) = c1 + c2*M."""
-    TWO_LINES = "two_lines"
-    """2: two lines, log10(h) = c1 + c2*M and c3 + c4*M, meeting at Mh."""
-    TWO_LINES_SMOOTHED = "two_lines_smoothed"
-    """3: two lines joined by a cubic over delta_m magnitude units (BT15)."""
-    GENERALIZED = "generalized"
-    """999: one-equation approximation of the smoothed lines; delta_m is hrat."""
-    STAFFORD_2022 = "stafford_2022"
-    """1000: Stafford et al. (2022), eq. 27, in natural logs; c1-c4 and delta_m
-    are h_alpha, h_beta, h_gamma, h_delta and h_epsilon."""
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class FiniteFault:
-    """Finite-fault factor h, which turns R into the point-source distance Rps.
-
-    Fortran: ``iflag_f_ff, nlines_f_ff, c1, c2, c3, c4, DeltaM`` (see
-    ``rmod_calc``; Boore and Thompson, 2015).
-
-    Parameters
-    ----------
-    model : FiniteFaultModel
-        Functional form of h(M).
-    combination : RpsCombination
-        How h combines with distance.
-    c1, c2, c3, c4 : float
-        Coefficients of the lines (log10) or of the Stafford et al. model.
-    delta_m : float
-        Width of the transition (``two_lines_smoothed``), hrat
-        (``generalized``) or h_epsilon (``stafford_2022``).
-    """
-
-    model: FiniteFaultModel = FiniteFaultModel.NONE
-    combination: RpsCombination = RpsCombination.QUADRATURE
-    c1: float = 0.0
-    c2: float = 0.0
-    c3: float = 0.0
-    c4: float = 0.0
-    delta_m: float = 0.0
-
-
-class SpreadingModel(StrEnum):
-    """Geometrical-spreading model (Fortran ``i_gsprd_option``)."""
-
-    HINGED = "hinged"
-    """0: hinged line segments, slopes optionally magnitude dependent."""
-    ATKINSON_2011 = "atkinson_2011"
-    """1: Atkinson's November 2011 ENA proposal (frequency dependent)."""
-    BOORE_TRIAL = "boore_trial"
-    """2: Boore's trial ENA spreading #1 (frequency dependent)."""
-    ATKINSON_2012 = "atkinson_2012"
-    """3: Atkinson (2012) NGA-East report (frequency dependent)."""
-    ATKINSON_BOORE_2014 = "atkinson_boore_2014"
-    """4: Atkinson and Boore (2014), BSSA 104, 513-528 (frequency dependent)."""
-    ATKINSON_BOORE_2014_R10 = "atkinson_boore_2014_r10"
-    """5: AB14Rlt10mod, 1/R within 10 km (frequency dependent)."""
-    STAFFORD_GENERALIZED = "stafford_generalized"
-    """6: Stafford's two segments with a smooth transition."""
-    STAFFORD_OPTIMAL = "stafford_optimal"
-    """7: Stafford et al. (2022) optimal model (Rps in the first term and Rrup
-    in the second; the params-file comments say Rjb, but the code uses Rrup)."""
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class SpreadingSegment:
-    """One segment of the hinged spreading model.
-
-    The slope beyond ``r_start`` is ``a + b*(M - m_ref)``. Fortran:
-    ``rlow, a_s, b_s, m_s``.
-    """
-
-    r_start: float
-    a: float
-    b: float = 0.0
-    m_ref: float = 0.0
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class Spreading:
-    """Geometrical spreading.
-
-    Parameters
-    ----------
-    model : SpreadingModel
-        Spreading model.
-    r_ref : float
-        Reference distance (km), usually 1 (``r_ref``).
-    segments : tuple of SpreadingSegment
-        ``hinged`` only: the segments, in order of increasing ``r_start``.
-    gamma1, r_t, gamma2 : float
-        ``stafford_generalized`` and ``stafford_optimal``: near slope,
-        transition distance and far slope (``g1_gsprd, rt_gsprd, g2_gsprd``).
-    g_ratio : float
-        ``stafford_generalized`` only: actual spreading divided by the near
-        spreading at r_t (``grat``).
-    frequency_dependent : tuple of float
-        Models 1-5: ``r1, p_lf, p_hf, p_far, ft1, ft2`` (``r1_dmb_gsprd``
-        etc.); only models 2 and 4 use them.
-    """
-
-    model: SpreadingModel = SpreadingModel.HINGED
-    r_ref: float = 1.0
-    segments: tuple[SpreadingSegment, ...] = ()
-    gamma1: float = 0.0
-    r_t: float = 0.0
-    gamma2: float = 0.0
-    g_ratio: float = 1.0
-    frequency_dependent: tuple[float, ...] = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-
-    def __post_init__(self) -> None:
-        if self.model is SpreadingModel.HINGED:
-            if not self.segments:
-                raise ValueError("hinged spreading needs at least one segment")
-            _check_increasing("segment r_start", tuple(s.r_start for s in self.segments))
-        if len(self.frequency_dependent) != 6:
-            raise ValueError("frequency_dependent needs 6 values")
-
-
-class QModel(StrEnum):
-    """Form of Q(f) (the sign of the first Fortran Q parameter)."""
-
-    PIECEWISE = "piecewise"
-    """fr1 > 0: power laws below ft1 and above ft2, joined between them."""
-    STAFFORD_2022 = "stafford_2022"
-    """fr1 < 0: Q = q0 * f**eta(M), eta = eta_a + eta_b*tanh(M - eta_g)."""
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class Q:
-    """Anelastic attenuation.
-
-    Fortran: ``fr1, qr1, s1, ft1, ft2, fr2, qr2, s2, c_q``.
-
-    Parameters
-    ----------
-    model : QModel
-        Form of Q(f).
-    c_q : float
-        Velocity used in the Q operator (km/s).
-    fr1, qr1, s1, ft1, ft2, fr2, qr2, s2 : float
-        ``piecewise`` only: Q = qr1*(f/fr1)**s1 for f <= ft1 and
-        qr2*(f/fr2)**s2 for f >= ft2, joined by a power law between.
-    q0, eta_a, eta_b, eta_g : float
-        ``stafford_2022`` only.
-    """
-
-    model: QModel = QModel.PIECEWISE
-    c_q: float = 3.5
-    fr1: float = 1.0
-    qr1: float = 0.0
-    s1: float = 0.0
-    ft1: float = 1.0
-    ft2: float = 1.0
-    fr2: float = 1.0
-    qr2: float = 0.0
-    s2: float = 0.0
-    q0: float = 0.0
-    eta_a: float = 0.0
-    eta_b: float = 0.0
-    eta_g: float = 0.0
-
-    def __post_init__(self) -> None:
-        if self.model is QModel.PIECEWISE and (self.fr1 <= 0 or self.fr2 <= 0):
-            raise ValueError("piecewise Q needs positive fr1 and fr2")
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -505,9 +320,9 @@ class Params:
     title: str
     medium: Medium
     source: SourceSpectrum
-    finite_fault: FiniteFault
-    spreading: Spreading
-    q: Q
+    finite_fault: FiniteFaultFactor = field(default_factory=NoFiniteFault)
+    spreading: GeometricalSpreading
+    q: QModel
     path_duration: PathDuration
     site: Site
     filters: Filters = field(default_factory=Filters)

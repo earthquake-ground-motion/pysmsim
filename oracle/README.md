@@ -68,8 +68,8 @@ the single build). With gfortran 13.3 the largest differences are 1.1e-15
 
 The shipped `.params` files cover source model 1, spreading options 0 and 7,
 the frequency-dependent Q of Stafford et al. (`fr1 < 0`) and the standard
-two-segment Q. Other source models and spreading options need synthetic
-`.params` files, which a later step will add.
+two-segment Q. The other source models, finite-fault factors and spreading
+options are covered by the synthetic cases that `make_golden.sh` writes.
 
 ## Golden files (`make_golden.sh`)
 
@@ -79,7 +79,9 @@ file it runs the RV, FAS and TD loop programs, using the control files in
 `inputs/`, and `factor_dump` on a smaller grid than `dump_factors.sh`. It
 also runs `factor_dump` for the synthetic source cases in
 `inputs/source_cases.txt`, variants of `ofr.params` that cover all 13 source
-models and the stress models. The
+models and the stress models, and for the synthetic path cases in
+`inputs/path_cases.txt`, which cover the finite-fault factors, spreading
+options and Q models that the shipped files do not use. The
 double build takes about 7 minutes with gfortran 13.3, almost all of it in
 the time-domain runs; `SKIP_TD=1` leaves those out.
 
@@ -136,7 +138,5 @@ exact equality.
 
 ## Not yet done
 
-- Synthetic `.params` files for the spreading, finite-fault and Q options
-  that the shipped files do not use.
 - The oscillator response (`harmoscf`), which `factor_dump` leaves out
   because it prints the Fourier spectrum without an instrument.

@@ -12,6 +12,17 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 
+from pysmsim.spectrum.attenuation import PiecewiseQ, QModel, Stafford2022Q
+from pysmsim.spectrum.finite_fault import (
+    FiniteFaultFactor,
+    Generalized,
+    NoFiniteFault,
+    OneLine,
+    RpsCombination,
+    Stafford2022FiniteFault,
+    TwoLines,
+    TwoLinesSmoothed,
+)
 from pysmsim.spectrum.source import (
     SOURCE_MODELS,
     Joyner1984,
@@ -19,6 +30,18 @@ from pysmsim.spectrum.source import (
     SourceSpectrum,
     TwoCornerAdditive,
     TwoCornerMultiplicative,
+)
+from pysmsim.spectrum.spreading import (
+    Atkinson2011,
+    Atkinson2012,
+    AtkinsonBoore2014,
+    AtkinsonBoore2014R10,
+    BooreTrial,
+    GeometricalSpreading,
+    Hinged,
+    SpreadingSegment,
+    StaffordGeneralized,
+    StaffordOptimal,
 )
 from pysmsim.spectrum.stress import (
     HoerlStress,
@@ -150,4 +173,138 @@ def read_source_cases() -> dict[str, SourceSpectrum]:
         else:  # no parameters
             source = cls()
         cases[name[0]] = source
+    return cases
+
+
+# --- Path: finite-fault factor, geometrical spreading and Q ----------------
+
+
+@dataclass(frozen=True)
+class PathModels:
+    """The path models of one params file."""
+
+    finite_fault: FiniteFaultFactor
+    spreading: GeometricalSpreading
+    q: QModel
+
+
+def _finite_fault(line: list[str]) -> FiniteFaultFactor:
+    """The finite-fault model of an SMSIM finite-fault line."""
+    iflag, nlines = int(line[0]), int(line[1])
+    c1, c2, c3, c4, dm = (float(v) for v in line[2:7])
+    if iflag == 0:
+        return NoFiniteFault()
+    combination = RpsCombination.QUADRATURE if iflag == 1 else RpsCombination.SUM
+    match nlines:
+        case 1:
+            return OneLine(c1=c1, c2=c2, combination=combination)
+        case 2:
+            return TwoLines(c1=c1, c2=c2, c3=c3, c4=c4, combination=combination)
+        case 3:
+            return TwoLinesSmoothed(c1=c1, c2=c2, c3=c3, c4=c4, delta_m=dm, combination=combination)
+        case 999:
+            return Generalized(c1=c1, c2=c2, c3=c3, c4=c4, h_ratio=dm, combination=combination)
+        case _:
+            return Stafford2022FiniteFault(
+                h_alpha=c1,
+                h_beta=c2,
+                h_gamma=c3,
+                h_delta=c4,
+                h_epsilon=dm,
+                combination=combination,
+            )
+
+
+def _spreading(lines: list[list[str]]) -> GeometricalSpreading:
+    """The spreading model of SMSIM's spreading lines (option, r1 line, r_ref, nsegs, ...)."""
+    option = int(lines[0][0])
+    r1_line = [float(v) for v in lines[1][:6]]
+    r_ref = float(lines[2][0])
+    rest = [[float(v) for v in line] for line in lines[4:]]
+    match option:
+        case 0:
+            segments = tuple(
+                SpreadingSegment(r_start=s[0], a=s[1], b=s[2], m_ref=s[3]) for s in rest
+            )
+            return Hinged(segments=segments, r_ref=r_ref)
+        case 1:
+            return Atkinson2011()
+        case 2:
+            r1, lf, hf, far, ft1, ft2 = r1_line
+            return BooreTrial(r1=r1, slope_lf=lf, slope_hf=hf, slope_far=far, ft1=ft1, ft2=ft2)
+        case 3:
+            return Atkinson2012(r_ref=r_ref)
+        case 4:
+            return AtkinsonBoore2014(h=r1_line[0], r_ref=r_ref)
+        case 5:
+            return AtkinsonBoore2014R10(h=r1_line[0], r_ref=r_ref)
+        case 6:
+            g1, rt, g2, grat = rest[0][:4]
+            return StaffordGeneralized(gamma1=g1, r_t=rt, gamma2=g2, g_ratio=grat, r_ref=r_ref)
+        case _:
+            g1, rt, g2 = rest[0][:3]
+            return StaffordOptimal(gamma1=g1, r_t=rt, gamma2=g2, r_ref=r_ref)
+
+
+def _q(line: list[str]) -> QModel:
+    """The Q model of an SMSIM Q line (fr1, qr1, s1, ft1, ft2, fr2, qr2, s2, c_q)."""
+    fr1, qr1, s1, ft1, ft2, fr2, qr2, s2, c_q = (float(v) for v in line[:9])
+    if fr1 < 0:
+        return Stafford2022Q(q0=qr1, eta_a=s1, eta_b=ft1, eta_g=ft2, c_q=c_q)
+    return PiecewiseQ(fr1=fr1, qr1=qr1, s1=s1, ft1=ft1, ft2=ft2, fr2=fr2, qr2=qr2, s2=s2, c_q=c_q)
+
+
+def path_models(finite_fault: str, spreading: str, q: str) -> PathModels:
+    """Path models from SMSIM params-file lines; spreading lines are separated by ";"."""
+    return PathModels(
+        finite_fault=_finite_fault(finite_fault.split()),
+        spreading=_spreading([line.split() for line in spreading.split(";")]),
+        q=_q(q.split()),
+    )
+
+
+# The path lines of the shipped .params files (finite fault | spreading | Q)
+SHIPPED_PATHS: dict[str, PathModels] = {
+    "ena.scf.bt15scr_fff.bs11_atten.bt15_dp.dmb_3kps_amps_aoi_00.k0.006.bt15e_drms": path_models(
+        "1 3 -1.8276 0.4300 -0.5126 0.2350 2.0",
+        "0;10.0 0.0 0.0 0.0 0.0 0.0;1.0;2;1.0 -1.0 0.0 6.5;50.0 -0.5 0.0 6.5",
+        "1.0 410 0.50 1.0 1.0 1.0 410 0.50 3.5",
+    ),
+    "ofr": path_models(
+        "0 0 0.0 0.0 0.0 0.0 0.0",
+        "0;10.0 0.0 0.0 0.0 0.0 0.0;1.0;3;1.0 -1.0 0.0 6.5;70.0 0.0 0.0 6.5;130.0 -0.5 0.0 6.5",
+        "0.1 275 -2.0 0.2 0.6 1.0 88.0 0.9 3.6",
+    ),
+    "stafford.convenience_model": path_models(
+        "2 1000 -0.7771 0.4768 1.1513 3.418 7.088",
+        "0;10.0 0.0 0.0 0.0 0.0 0.0;1.0;3;1.0 -1.1680 0.0 6.5;25.0 -0.9293 0.0 6.5;"
+        "85.0 -0.5 0.0 6.5",
+        "1.0 183.7 0.7077 1.0 1.0 1.0 183.7 0.7077 3.5",
+    ),
+    "stafford.optimal_model": path_models(
+        "2 1000 -0.8712 0.4451 1.1513 5.0948 7.2725",
+        "7;10.0 0.0 0.0 0.0 0.0 0.0;1.0;0;-1.1611 50.0 -0.5 0.0",
+        "-1.0 205.4 0.6884 0.1354 5.1278 0.0 0.0 0.0 3.5",
+    ),
+    "wna.scf.bt15acr_fff.rea99_atten.bt14_dp.bj97gr760_amps.k0.035.bt15w_drms": path_models(
+        "1 3 -1.7200 0.4300 -0.405 0.2350 2.0",
+        "0;10.0 0.0 0.0 0.0 0.0 0.0;1.0;2;1.0 -1.0 0.0 6.5;40.0 -0.5 0.0 6.5",
+        "1.0 180 0.45 1.0 1.0 1.0 180 0.45 3.5",
+    ),
+    "wna.scf.xfff.rea99_atten.bt14_dp.bj97gr760_amps.k0.035.bt15w_drms": path_models(
+        "0 0 0.0 0.0 0.0 0.0 0.0",
+        "0;10.0 0.0 0.0 0.0 0.0 0.0;1.0;2;1.0 -1.0 0.0 6.5;40.0 -0.5 0.0 6.5",
+        "1.0 180 0.45 1.0 1.0 1.0 180 0.45 3.5",
+    ),
+}
+
+
+def read_path_cases() -> dict[str, PathModels]:
+    """The synthetic path cases of oracle/inputs/path_cases.txt."""
+    cases: dict[str, PathModels] = {}
+    for line in (ORACLE_INPUTS / "path_cases.txt").read_text().splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        name, ff, spreading, q = (part.strip() for part in line.split("|"))
+        cases[name] = path_models(ff, spreading, q)
     return cases
