@@ -19,7 +19,7 @@ values (for example ``osc_correction = "bt15_wna"`` in ``[rv]``). In
 other keys are the fields of that class; a key the named model does not use
 is an error. In ``[scenarios]``,
 ``magnitudes`` may be a table ``{start, stop, step}`` and ``distances``,
-``periods``, ``kappa0`` and ``stress`` a table ``{start, stop, count}`` for
+``periods``, ``frequencies``, ``kappa0`` and ``stress`` a table ``{start, stop, count}`` for
 log-spaced values, as in the SMSIM control files. ``examples/`` has complete
 files. The file is checked with pydantic: unknown keys, wrong types and
 inconsistent settings are reported with the key that caused them.
@@ -623,6 +623,7 @@ class ScenariosSection(_Section):
     pga: bool = True
     pgv: bool = True
     damping: float = Field(0.05, gt=0, lt=1)
+    frequencies: _Values = ()
     kappa0: _Values | None = None
     stress: _Values | None = None
 
@@ -638,6 +639,7 @@ class ScenariosSection(_Section):
             pga=self.pga,
             pgv=self.pgv,
             damping=self.damping,
+            frequencies=_expand(self.frequencies),
             kappa0=None if self.kappa0 is None else _expand(self.kappa0),
             stress=None if self.stress is None else _expand(self.stress),
         )

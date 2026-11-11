@@ -7,7 +7,10 @@
 #   BJ97gr760 amplification, kappa_0 0.035 s, BT15 WNA oscillator correction).
 # Scenarios: tmrsk_loop_rv_drvr.ctl from the example (M 4, 6, 8; Rjb 10 km;
 #   kappa_0 0.02 and 0.05 s; stress 100 bars; 200 periods from 0.01 to 100 s
-#   plus PGA and PGV; CY14 Ztor for Rjb to Rrup).
+#   plus PGA and PGV; CY14 Ztor for Rjb to Rrup), and the Fourier spectra
+#   at 41 frequencies, which SMSIM's RV driver does not give.
+#
+# Run it with:  pysmsim run examples/wna_bt15_example.toml
 
 schema_version = 1
 title = "Western North America params"
@@ -119,6 +122,7 @@ periods = { start = 0.01, stop = 100.0, count = 200 }
 pga = true
 pgv = true
 damping = 0.05
+frequencies = { start = 0.01, stop = 100.0, count = 41 }   # Hz, for the FAS columns
 kappa0 = [0.02, 0.05]
 stress = [100.0]
 

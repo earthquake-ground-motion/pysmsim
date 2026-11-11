@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pysmsim"
-version = "0.0.1"
+version = "0.1.0"
 description = "Python implementation of the SMSIM stochastic ground-motion simulation method (Boore, 2003)"
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -50,7 +50,7 @@ dev = [
 [project.urls]
 Repository = "https://github.com/earthquake-ground-motion/pysmsim"
 
-# Command-line entry point; the module is added in a later step.
+# Command-line entry point (pysmsim run | check)
 [project.scripts]
 pysmsim = "pysmsim.cli:main"
 

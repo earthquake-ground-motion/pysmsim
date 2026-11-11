@@ -121,7 +121,8 @@ def run(
         PGA, the Rjb-to-Rrup conversion and optional kappa_0 and stress
         values.
     frequencies : array_like, optional
-        Frequencies of the FAS (Hz), one-dimensional; no FAS if not given.
+        Frequencies of the FAS (Hz), one-dimensional; ``grid.frequencies``
+        if not given. No FAS when there are none.
     rv : bool
         Whether to compute the random-vibration peak motions.
     fortran_compat : bool
@@ -141,7 +142,7 @@ def run(
         values >= 0 (to 6 significant digits, the precision of the column
         names).
     """
-    f = np.asarray([] if frequencies is None else frequencies, dtype=np.float64)
+    f = np.asarray(grid.frequencies if frequencies is None else frequencies, dtype=np.float64)
     if f.ndim != 1 or np.any(f < 0):
         raise ValueError("frequencies must be a one-dimensional array of values >= 0")
     names = [fas_column(x) for x in f]

@@ -293,9 +293,15 @@ physics.
     frequency or measure, with the intermediate quantities. `run` computes
     both and returns `RunResult`: three tables sharing their rows
     (scenarios, fas, rv), as the owner wants for a typical run;
-  - `io/`: `config.py` (TOML), `bt15_tables.py` and `hdf5.py` (`write_hdf5`
-    and `read_hdf5`; a group per table, FAS and PSA as 2-D arrays, the
-    run file's TOML in an attribute).
+  - `io/`: `config.py` (TOML), `bt15_tables.py`, `hdf5.py` (`write_hdf5`
+    and `read_hdf5`; a group per table, one dataset per column, FAS and PSA
+    as 2-D arrays, the run file's TOML in an attribute; the owner kept one
+    dataset per column rather than structured arrays) and `results.py`
+    (`write_results` for csv, parquet, hdf5 and SMSIM's `.col` layout);
+  - `cli.py`: `pysmsim run` and `pysmsim check` (also `python -m
+    pysmsim`). `[scenarios] frequencies` in the run file adds the FAS to a
+    run. `pysmsim convert` (old `.params`/`.ctl` to TOML) is the next step
+    after release 0.1, as the owner decided.
 - `src/pysmsim/data/`: bundled tables (`bt15/` holds the two BT15 `.pars`
   files as `bt15_wna_acr.pars` and `bt15_ena_scr.pars`; `crustal_amps/`,
   `presets/`).

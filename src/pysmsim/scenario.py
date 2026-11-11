@@ -155,6 +155,9 @@ class ScenarioGrid:
         Whether to compute PGA and PGV.
     damping : float
         Oscillator damping, as a fraction of critical.
+    frequencies : tuple of float
+        Frequencies (Hz) at which a run also gives the Fourier acceleration
+        spectrum (see :func:`pysmsim.drivers.run.run`); none by default.
     kappa0 : tuple of float or None
         If given, loop over these kappa_0 values instead of the one in the
         parameters (and make kappa independent of magnitude, as the Fortran
@@ -174,6 +177,7 @@ class ScenarioGrid:
     pga: bool = True
     pgv: bool = True
     damping: float = 0.05
+    frequencies: tuple[float, ...] = ()
     kappa0: tuple[float, ...] | None = None
     stress: tuple[float, ...] | None = None
 
@@ -188,3 +192,5 @@ class ScenarioGrid:
             raise ValueError("a scenario grid needs at least one period, pga or pgv")
         if not 0 < self.damping < 1:
             raise ValueError(f"damping must be between 0 and 1, got {self.damping}")
+        if any(f < 0 for f in self.frequencies):
+            raise ValueError("frequencies must not be negative")
