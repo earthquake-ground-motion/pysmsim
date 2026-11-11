@@ -44,6 +44,22 @@ The output format follows the suffix given with `-o`, or `--format`:
 differs from it (see `CLAUDE.md`). `pysmsim --help` and
 `pysmsim run --help` list every option.
 
+### Converting SMSIM input files
+
+`pysmsim convert` turns an SMSIM parameter file (the format of SMSIM
+2023-03-03, dated 02/25/21) and, optionally, a `tmrsk_loop_rv_drvr`
+control file into a run file:
+
+```bash
+pysmsim convert model.params tmrsk_loop_rv_drvr.ctl -o run.toml
+pysmsim convert model.params > run.toml   # example scenarios to edit
+```
+
+Where SMSIM would behave differently from pysmsim with these inputs (for
+example the stress model of sources 2, 11 and 12, or a low-cut `nslope`
+that SMSIM rounds), the converter prints a note and writes it at the top
+of the run file. An existing `-o` file is replaced only with `--force`.
+
 ## Using it from Python
 
 ```python

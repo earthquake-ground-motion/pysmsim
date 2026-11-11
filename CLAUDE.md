@@ -293,7 +293,8 @@ physics.
     frequency or measure, with the intermediate quantities. `run` computes
     both and returns `RunResult`: three tables sharing their rows
     (scenarios, fas, rv), as the owner wants for a typical run;
-  - `io/`: `config.py` (TOML), `bt15_tables.py`, `hdf5.py` (`write_hdf5`
+  - `io/`: `config.py` (TOML; `params_table` gives the parameter
+    sections as a dict), `bt15_tables.py`, `hdf5.py` (`write_hdf5`
     and `read_hdf5`; a group per table, one dataset per column, FAS and PSA
     as 2-D arrays, the run file's TOML in an attribute; the owner kept one
     dataset per column rather than structured arrays) and `results.py`
@@ -303,8 +304,17 @@ physics.
     run. A grid may have at most 1,000 periods and 1,000 frequencies (the
     owner's limit, so that a run file cannot exhaust memory; checked before
     `{start, stop, count}` is expanded). Output paths in a run file are
-    not restricted (the owner accepted that). `pysmsim convert` (old `.params`/`.ctl` to TOML) is the next step
-    after release 0.1, as the owner decided.
+    not restricted (the owner accepted that);
+  - `io/legacy.py` and `pysmsim convert PARAMS [CTL] [-o run.toml]`:
+    convert a `.params` file (dated 02/25/21) and a `tmrsk_loop_rv_drvr`
+    control file (03/03/23, or 01/22/21 without the mechanism line) into a
+    run file. The reader copies `skipcmnt` and Fortran list-directed input
+    (continuation lines, `n*v`, `d` exponents, a count and its list in one
+    statement). Where SMSIM would behave differently it adds notes, printed
+    and written at the top of the run file. Without a control file the
+    scenarios are example values. Tests compare every shipped and synthetic
+    oracle `.params` file with `oracle_files.py`; copies of the shipped
+    files are in `tests/data/smsim/`.
 - `src/pysmsim/data/`: bundled tables (`bt15/` holds the two BT15 `.pars`
   files as `bt15_wna_acr.pars` and `bt15_ena_scr.pars`; `crustal_amps/`,
   `presets/`).

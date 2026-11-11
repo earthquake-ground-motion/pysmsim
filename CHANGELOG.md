@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- `pysmsim convert PARAMS [CTL] [-o run.toml]` (`pysmsim.io.legacy`)
+  converts an SMSIM parameter file and, optionally, a control file of
+  `tmrsk_loop_rv_drvr` into a TOML run file. Notes on where SMSIM would
+  behave differently from pysmsim are printed and written at the top of
+  the run file.
+
 ## 0.1.0
 
 First release: the random-vibration method of SMSIM 2023-03-03.

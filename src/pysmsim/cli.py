@@ -1,12 +1,14 @@
 """The ``pysmsim`` command.
 
 ``pysmsim run`` computes the scenarios of a TOML run file and writes the
-results; ``pysmsim check`` validates run files without computing anything::
+results; ``pysmsim check`` validates run files without computing anything;
+``pysmsim convert`` turns SMSIM input files into a run file::
 
     pysmsim check run.toml
     pysmsim run run.toml
     pysmsim run run.toml -o results.h5
     pysmsim run run.toml -o results.col --fortran-compat
+    pysmsim convert model.params tmrsk_loop_rv_drvr.ctl -o run.toml
 
 ``python -m pysmsim`` does the same. The output file and format come from
 the ``[output]`` section of the run file unless ``-o`` or ``--format``
@@ -30,6 +32,7 @@ from pathlib import Path
 from pysmsim import __version__
 from pysmsim.drivers.run import run
 from pysmsim.io.config import ConfigError, RunConfig, load_config
+from pysmsim.io.legacy import LegacyFormatError, convert
 from pysmsim.io.results import format_for_path, write_results
 from pysmsim.scenario import OutputFormat, ScenarioGrid
 
@@ -81,6 +84,30 @@ def _parser() -> argparse.ArgumentParser:
     )
     check_cmd.add_argument("configs", type=Path, nargs="+", metavar="config", help="TOML run file")
     check_cmd.add_argument("-q", "--quiet", action="store_true", help="print nothing but errors")
+
+    convert_cmd = commands.add_parser(
+        "convert",
+        help="convert SMSIM input files into a run file",
+        description=(
+            "Convert an SMSIM parameter file (dated 02/25/21) and, optionally, a control file "
+            "of tmrsk_loop_rv_drvr into a TOML run file. Notes on where SMSIM would behave "
+            "differently are printed and written at the top of the run file."
+        ),
+    )
+    convert_cmd.add_argument("params", type=Path, help="SMSIM .params file")
+    convert_cmd.add_argument(
+        "ctl",
+        type=Path,
+        nargs="?",
+        help="tmrsk_loop_rv_drvr control file for the scenarios (default: example scenarios)",
+    )
+    convert_cmd.add_argument(
+        "-o", "--output", type=Path, help="run file to write (default: print it)"
+    )
+    convert_cmd.add_argument(
+        "--force", action="store_true", help="replace the -o file if it exists"
+    )
+    convert_cmd.add_argument("-q", "--quiet", action="store_true", help="print nothing but errors")
     return parser
 
 
@@ -192,11 +219,39 @@ def _run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _convert(args: argparse.Namespace) -> int:
+    output: Path | None = args.output
+    if output is not None and output.exists() and not args.force:
+        print(f"pysmsim: {output} exists; use --force to replace it", file=sys.stderr)
+        return 1
+    try:
+        text, notes = convert(args.params, args.ctl)
+    except LegacyFormatError as err:
+        print(f"pysmsim: {err}", file=sys.stderr)
+        return 1
+    if output is None:
+        sys.stdout.write(text)
+    else:
+        try:
+            output.write_text(text)
+        except OSError as err:
+            print(f"pysmsim: cannot write {output}: {err.strerror or err}", file=sys.stderr)
+            return 1
+    if not args.quiet:
+        for note in notes:
+            print(f"note: {note}", file=sys.stderr)
+        if output is not None:
+            print(f"Wrote {output}", file=sys.stderr)
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the ``pysmsim`` command; return its exit status."""
     args = _parser().parse_args(argv)
     if args.command == "check":
         return _check(args)
+    if args.command == "convert":
+        return _convert(args)
     return _run(args)
 
 
