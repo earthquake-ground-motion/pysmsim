@@ -31,6 +31,8 @@ oscillator corrections for WNA and ENA. The control files in
 | `path/` | `factor_dump` | 17 synthetic path cases (below); M 3, 5, 7; Rrup 0.5, 5, 30, 55, 200 km; 21 frequencies, 0.01-100 Hz | 21 (one file per case, M and Rrup) |
 | `response/` | `response_dump` | M 5, 7; Rrup 10 km; 41 frequencies, 0.01-100 Hz; ground displacement, velocity and acceleration, oscillators at 0.01, 0.1, 1 and 10 s (5% damping), Wood-Anderson and WWSSN-SP | 41 (one file per params file and M) |
 | `rv/` | `tmrsk_loop_rv_drvr` | M 4-8 (step 1); Rjb 1, 5, 20, 50, 100, 300 km; PGV, PGA and PSA at 0.01, 0.1, 0.3, 1, 3, 10 s (5% damping) | 240 |
+| `rv_cases/` | `tmrsk_loop_rv_drvr` | 12 synthetic RV cases (below), on the grid of `rv/` with the damping of the case | 240 (one file per case) |
+| `example/` | `tmrsk_loop_rv_drvr` | The shipped example: 200 periods from 0.01 to 100 s, PGV and PGA; M 4, 6, 8; Rjb 10 km; kappa_0 0.02 and 0.05 s; 100 bars. `shipped.col` is the distribution's file, `double.col` the same run with the double build | 1212 |
 | `source/` | `factor_dump` | 18 synthetic source cases (below); M 2, 3, 4.5, 5, 6, 8; Rrup 20 km; 21 frequencies, 0.01-100 Hz | 21 (one file per case and M) |
 | `site/` | `factor_dump` | 10 synthetic site and filter cases (below); M 4, 6, 8; Rrup 20 km; 41 frequencies, 0.01-100 Hz | 41 (one file per case and M) |
 | `site_lines/` | none | The crustal-amplification, diminution, low-cut and high-cut lines of each shipped `.params` file, copied without comments | (one file per params file) |
@@ -57,6 +59,18 @@ low-cut filter with nslope 4, 6 and 12, and both high-cut shapes with
 several powers. Each is `ofr.params` with the site and filter lines
 replaced, as listed in `oracle/inputs/site_cases.txt`.
 `s_lowcut_quirk_nslope6` shows SMSIM rounding nslope 6 down to 4.
+
+The `rv_cases/` cover the oscillator corrections the shipped files do not
+use (BJ84, LP99 and the average of the two BT15 tables), the BT15 tables
+with the `ofr.params` spectrum, 2% and 10% damping, fup set by kappa or
+fmax alone, and other `zup` and `amp_cutoff` values. Each is `ofr.params`
+with the diminution and RV lines replaced, as listed in
+`oracle/inputs/rv_cases.txt`. `rv_quirk_kappa_mdep` shows the loop driver
+ignoring `dkappadmag`.
+
+SMSIM's spectral moments carry its integration error (a few 1e-4), which
+narrow-band oscillators amplify, so a few RV rows differ from pysmsim by
+more than 1e-3; `test_rv_golden.py` explains the tolerances.
 
 The loop programs convert Rjb to Rrup with the CY14 Ztor relation for a
 strike-slip fault (case 2 in the control files).

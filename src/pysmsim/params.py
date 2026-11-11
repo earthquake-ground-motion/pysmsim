@@ -30,6 +30,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from itertools import pairwise
 
+import numpy as np
+
 from pysmsim.spectrum.attenuation import QModel
 from pysmsim.spectrum.filters import Filters
 from pysmsim.spectrum.finite_fault import FiniteFaultFactor, NoFiniteFault
@@ -117,7 +119,8 @@ class Medium:
 class PathDuration:
     """Path duration as a function of distance (``nknots, rdur, dur, slast``).
 
-    Linear between the knots, ``slope_beyond`` (s/km) past the last one.
+    Linear between the knots, ``slope_beyond`` (s/km) past the last one,
+    and the first duration below the first knot.
     """
 
     distances: tuple[float, ...]
@@ -129,6 +132,19 @@ class PathDuration:
         if not self.distances:
             raise ValueError("path duration needs at least one knot")
         _check_increasing("path-duration distances", self.distances)
+
+    def duration(self, rps: float) -> float:
+        """Path duration (s) at a point-source distance (Fortran ``durpath``).
+
+        Parameters
+        ----------
+        rps : float
+            Point-source distance Rps (km).
+        """
+        last = self.distances[-1]
+        if rps >= last:
+            return self.durations[-1] + (rps - last) * self.slope_beyond
+        return float(np.interp(rps, self.distances, self.durations))
 
 
 class OscillatorCorrection(StrEnum):

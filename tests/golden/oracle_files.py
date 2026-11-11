@@ -6,13 +6,13 @@ folder. These helpers are for the tests only.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
 
-from pysmsim.params import Medium, Params, PathDuration
+from pysmsim.params import Medium, OscillatorCorrection, Params, PathDuration, RVConfig
 from pysmsim.spectrum.attenuation import PiecewiseQ, QModel, Stafford2022Q
 from pysmsim.spectrum.filters import (
     Filters,
@@ -413,13 +413,57 @@ SHIPPED_MEDIA: dict[str, Medium] = {
     ),
 }
 
-# The spectrum does not use the path duration; the RV tests will need the
-# real one
-_NO_PATH_DURATION = PathDuration(distances=(0.0,), durations=(0.0,))
+# The path-duration lines of the shipped .params files: AB06 in ofr.params,
+# BT14 for ENA and WNA in the others
+_AB06_DURATION = PathDuration(
+    distances=(0.0, 10.0, 70.0, 130.0), durations=(0.0, 0.0, 9.6, 7.8), slope_beyond=0.04
+)
+_BT14W_DURATION = PathDuration(
+    distances=(0.0, 7.0, 45.0, 125.0, 175.0, 270.0),
+    durations=(0.0, 2.4, 8.4, 10.9, 17.4, 34.2),
+    slope_beyond=0.156,
+)
+_BT14E_DURATION = PathDuration(
+    distances=(0.0, 15.0, 35.0, 50.0, 125.0, 200.0, 392.0, 600.0),
+    durations=(0.0, 2.6, 17.5, 25.1, 25.1, 28.5, 46.0, 69.1),
+    slope_beyond=0.111,
+)
+SHIPPED_PATH_DURATIONS: dict[str, PathDuration] = {
+    "ena.scf.bt15scr_fff.bs11_atten.bt15_dp.dmb_3kps_amps_aoi_00.k0.006.bt15e_drms": (
+        _BT14E_DURATION
+    ),
+    "ofr": _AB06_DURATION,
+    "stafford.convenience_model": _BT14W_DURATION,
+    "stafford.optimal_model": _BT14W_DURATION,
+    "wna.scf.bt15acr_fff.rea99_atten.bt14_dp.bj97gr760_amps.k0.035.bt15w_drms": _BT14W_DURATION,
+    "wna.scf.xfff.rea99_atten.bt14_dp.bj97gr760_amps.k0.035.bt15w_drms": _BT14W_DURATION,
+}
+
+# The RV lines (zup, eps_int, amp_cutoff, osc_crrctn): all the shipped files
+# use 10, 1e-5 and 1e-3, and the two BT15 tables bundled with pysmsim
+SHIPPED_OSC_CORRECTIONS: dict[str, OscillatorCorrection] = {
+    "ena.scf.bt15scr_fff.bs11_atten.bt15_dp.dmb_3kps_amps_aoi_00.k0.006.bt15e_drms": (
+        OscillatorCorrection.BT15_ENA
+    ),
+    "ofr": OscillatorCorrection.NONE,
+    "stafford.convenience_model": OscillatorCorrection.BT15_WNA,
+    "stafford.optimal_model": OscillatorCorrection.BT15_WNA,
+    "wna.scf.bt15acr_fff.rea99_atten.bt14_dp.bj97gr760_amps.k0.035.bt15w_drms": (
+        OscillatorCorrection.BT15_WNA
+    ),
+    "wna.scf.xfff.rea99_atten.bt14_dp.bj97gr760_amps.k0.035.bt15w_drms": (
+        OscillatorCorrection.BT15_WNA
+    ),
+}
 
 
 def params_from_parts(
-    medium: Medium, source: SourceSpectrum, path: PathModels, site: SiteModels
+    medium: Medium,
+    source: SourceSpectrum,
+    path: PathModels,
+    site: SiteModels,
+    path_duration: PathDuration = _AB06_DURATION,
+    rv: RVConfig | None = None,
 ) -> Params:
     """Params made of the parts read from a params file."""
     return Params(
@@ -429,17 +473,55 @@ def params_from_parts(
         finite_fault=path.finite_fault,
         spreading=path.spreading,
         q=path.q,
-        path_duration=_NO_PATH_DURATION,
+        path_duration=path_duration,
         site=site.site,
         filters=site.filters,
+        rv=rv or RVConfig(),
     )
 
 
 def shipped_params(stem: str) -> Params:
-    """The spectrum parameters of a shipped .params file."""
+    """The parameters of a shipped .params file."""
     return params_from_parts(
         SHIPPED_MEDIA[stem],
         SHIPPED_SOURCES[stem][1],
         SHIPPED_PATHS[stem],
         read_shipped_sites()[stem],
+        SHIPPED_PATH_DURATIONS[stem],
+        RVConfig(osc_correction=SHIPPED_OSC_CORRECTIONS[stem]),
     )
+
+
+# --- Random-vibration cases ------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class RVCase:
+    """A synthetic RV case: ofr.params with other site and RV lines."""
+
+    params: Params
+    damping: float
+
+
+def read_rv_cases() -> dict[str, RVCase]:
+    """The cases of oracle/inputs/rv_cases.txt."""
+    base = shipped_params("ofr")
+    corrections = list(OscillatorCorrection)  # in the order of osc_crrctn 0-5
+    cases = {}
+    for line in (ORACLE_INPUTS / "rv_cases.txt").read_text().splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        name, dimin, rv_line, damping = (part.strip() for part in line.split("|"))
+        fm, kappa, dkappa, mref = (float(v) for v in dimin.split())
+        zup, eps_int, amp_cutoff, osc = rv_line.split()
+        site = replace(
+            base.site, fmax=fm, kappa0=kappa, dkappa_dmag=dkappa, kappa_magnitude_ref=mref
+        )
+        rv = RVConfig(
+            zup=float(zup),
+            eps_int=float(eps_int),
+            amp_cutoff=float(amp_cutoff),
+            osc_correction=corrections[int(osc)],
+        )
+        cases[name] = RVCase(replace(base, site=site, rv=rv), float(damping))
+    return cases

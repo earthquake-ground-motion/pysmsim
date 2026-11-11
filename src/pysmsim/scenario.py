@@ -115,6 +115,8 @@ class OutputFormat(StrEnum):
     PARQUET = "parquet"
     COL = "col"
     """SMSIM column layout, for comparison with the Fortran."""
+    HDF5 = "hdf5"
+    """One HDF5 file with the scenario, FAS and RV tables (:mod:`pysmsim.io.hdf5`)."""
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

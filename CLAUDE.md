@@ -100,7 +100,23 @@ Units are cgs (cm, s, g/cm³), with distances in km and g = 981 cm/s².
    - the RV drivers compute the upper integration frequency `fup` (via
      `get_fup`) from `akappa`, the kappa at the reference magnitude, not
      from kappa at the scenario magnitude, so `dkappadmag` does not change
-     `fup` (matters for the RV step);
+     `fup` (the `fortran_compat` argument of `pysmsim.rv.gm_rv.rv_fup`);
+     with neither kappa nor fmax, `get_fup` gives `fup = 0` and no motion
+     (pysmsim raises an error);
+   - `PF_DK80eq2PDF` computes the DK80 peak factor as a Riemann sum up to
+     a = 6, doubling the number of steps until the relative change is below
+     `eps_int`, without taking its absolute value, so a sum that decreases
+     stops at once; it agrees with the exact integral to about 1e-4, but
+     loses more than 1e-3 with very many zero crossings (pysmsim integrates
+     exactly; `pysmsim.rv.peak_factors.der_kiureghian_1980_fortran` and
+     `fortran_compat` reproduce the sum and its `na_dk80_eq2`);
+   - `drms_dex_f` and `bt12_td_rv_for_pga_or_pgv_f` treat a BT15 table cell
+     as missing only when its lower-left corner is zero (no shipped table
+     has zeros, so this never matters);
+   - `gm_rv` applies the oscillator correction to the Wood-Anderson and
+     WWSSN-SP responses too, with a made-up oscillator frequency and the
+     negative "period" the loop driver uses to select them; pysmsim's RV
+     functions accept only ground motion and oscillators for now;
    - the loop drivers set `dkappadmag` and `amagkref` to 0 for every
      kappa_0, including the one taken from the params file, so kappa never
      depends on magnitude in a loop run (the `fortran_compat` argument of
@@ -133,8 +149,11 @@ Units are cgs (cm, s, g/cm³), with distances in km and g = 981 cm/s².
    - `pysmsim convert old.params old.ctl -o run.toml` migrates old inputs.
 4. **Numba from the start**, on the hot paths:
    - `spect_amp` kernels;
-   - RV integrands as `@cfunc` passed to `scipy.integrate.quad` through a
-     `LowLevelCallable`;
+   - the RV moments: one adaptive Gauss-Kronrod integration of all four
+     moments that evaluates the compiled spectrum kernels on arrays
+     (`pysmsim.rv.moments.integrate`; decided in phase 2, as the spectrum
+     is not one compiled function and per-point `quad` calls were too
+     slow);
    - the Nigam-Jennings oscillator;
    - `prange` over periods, scenarios and `nsims`.
 
@@ -142,8 +161,9 @@ Units are cgs (cm, s, g/cm³), with distances in km and g = 981 cm/s².
    kernel has a plain NumPy twin, and the tests also run with
    `NUMBA_DISABLE_JIT=1`. Use `cache=True`.
 5. **pandas for tables and I/O** (scenario grids, results, golden-test merges).
-   Outputs are Parquet (via pyarrow), CSV, and a `.col` writer in the Fortran
-   column layout for comparison. Consider Polars only if profiling later shows
+   Outputs are Parquet (via pyarrow), CSV, a `.col` writer in the Fortran
+   column layout for comparison, and one HDF5 file (via plain h5py, the
+   owner's choice) holding a run's scenario, FAS and RV tables. Consider Polars only if profiling later shows
    table handling is a bottleneck. Physics functions take and return NumPy
    arrays, never DataFrames.
 6. **No precompiled Fortran binaries exist.** Phase 0 builds them from the
@@ -171,7 +191,7 @@ Units are cgs (cm, s, g/cm³), with distances in km and g = 981 cm/s².
 
   | Numerical Recipes | Replacement |
   | --- | --- |
-  | `odeint` | `quad` |
+  | `odeint` | adaptive Gauss-Kronrod (`pysmsim.rv.moments.integrate`) |
   | `qromb`, `qmidpnt` | `quad` |
   | `realft`, `four1` | `numpy.fft.rfft`/`irfft`; redo the normalisation |
   | `gasdev`, `ran1` | `Generator` |
@@ -200,7 +220,7 @@ oracle/      scripts that build and run the Fortran (no source edits)
 ```
 
 Dependencies: python>=3.12, numpy>=2.0, scipy>=1.13, numba>=0.60, pandas>=2.2,
-pyarrow. Dev dependencies: pytest, ruff, mypy, hypothesis.
+pyarrow, h5py. Dev dependencies: pytest, ruff, mypy, hypothesis.
 
 ## Phases (each ends at a gate that compares against Fortran)
 
@@ -210,7 +230,7 @@ pyarrow. Dev dependencies: pytest, ruff, mypy, hypothesis.
 | 1 | Dataclasses, TOML schema and converter, spectrum modules, FAS loop | Factors and FAS within 1e-4 |
 | 2 | RV: moments, peak factors, `osc_crrctn` 0-5, RV loop, CLI → release 0.1 | PSA within 1e-3 on the example and all params files |
 | 3 | TD: noise, windows, `acc_ts`, oscillator, Arias, TD loop | Injected-noise trace within 1e-5; means within 3 standard errors |
-| 4 | Single-scenario drivers, docs, Numba tuning → release 1.0 | All layers green in CI, plus an acceptance run on the owner's inputs |
+| 4 | Single-scenario drivers, docs (including why RV results can differ from SMSIM's by more than 1e-3; see Validation), Numba tuning → release 1.0 | All layers green in CI, plus an acceptance run on the owner's inputs |
 
 Later releases: 1.1 adds M and R from a file, Sea22 Q sampling, SMC export and
 `fas_td`. Out of scope: EXSIM, NRATTLE and SITE_AMP, and any change to the
@@ -232,6 +252,15 @@ physics.
 - The shipped example `example.tmrsk_loop_rv_drvr/` has a 1,212-row `.col`
   file. Its `.ctl` is dated 01/22/21 and has no mechanism line, so update a
   copy before running it.
+- SMSIM's spectral moments (NR `odeint` with `eps_int` = 1e-5) are only
+  accurate to a few 1e-4 (2.6e-3 in one golden case), because the step
+  error accumulates; pysmsim's agree with `quad` to about 1e-6. Narrow-band
+  oscillator responses amplify this through the bandwidth
+  sqrt(1 - m1^2/(m0*m2)), so a few RV golden rows (5 of about 4,300)
+  differ from SMSIM by more than 1e-3 (at most 4.3e-3). The example run
+  agrees within 6e-4 of the double build. The owner accepted this
+  (2026-11-11) rather than emulating `odeint`; explain it in the user
+  documentation in phase 4.
 
 ## How we work
 
@@ -253,7 +282,23 @@ physics.
 ## Repository layout
 
 - `src/pysmsim/`: the package (`io/`, `spectrum/`, `rv/`, `td/`, `drivers/`).
-- `src/pysmsim/data/`: bundled tables (`bt15/`, `crustal_amps/`, `presets/`).
+  - `rv/`: `moments.py` (moments, fup), `peak_factors.py`, `duration.py`
+    (durations, oscillator corrections, BT15 tables) and `gm_rv.py`
+    (`rv_motion`, one scenario);
+  - `drivers/`: `loop_fas.py`, `loop_rv.py` and `run.py`. Output tables
+    have one row per scenario with the ground motions as columns, the
+    layout the owner prefers: `fas_loop` gives `fas(f)` (cm/s), `rv_loop`
+    `pgv` (cm/s), `pga` and `psa(T)` (cm/s^2), with no conversion to g.
+    `fas_loop_details` and `rv_loop_details` give one row per scenario and
+    frequency or measure, with the intermediate quantities. `run` computes
+    both and returns `RunResult`: three tables sharing their rows
+    (scenarios, fas, rv), as the owner wants for a typical run;
+  - `io/`: `config.py` (TOML), `bt15_tables.py` and `hdf5.py` (`write_hdf5`
+    and `read_hdf5`; a group per table, FAS and PSA as 2-D arrays, the
+    run file's TOML in an attribute).
+- `src/pysmsim/data/`: bundled tables (`bt15/` holds the two BT15 `.pars`
+  files as `bt15_wna_acr.pars` and `bt15_ena_scr.pars`; `crustal_amps/`,
+  `presets/`).
 - `tests/unit/` and `tests/golden/`: unit tests and Fortran comparisons
   (`tests/golden/README.md` describes the golden files).
 - `oracle/`:

@@ -1,0 +1,29 @@
+# Synthetic random-vibration cases for the golden files (oracle/make_golden.sh).
+#
+# Each case is ofr.params from the SMSIM distribution with its diminution
+# line (fmax, kappa, dkappadmag, amagkref) and its RV line (zup, eps_int,
+# amp_cutoff, osc_crrctn) replaced, run with tmrsk_loop_rv_drvr and the
+# control file oracle/inputs/tmrsk_loop_rv_drvr.ctl with the given damping.
+# The shipped .params files use the oscillator corrections 0 (none), 3 and 4
+# (one BT15 table) with kappa; these cases cover the corrections 1 (BJ84),
+# 2 (LP99) and 5 (average of the BT15 tables), the BT15 tables with the
+# ofr.params spectrum, other dampings, fup set by fmax or kappa alone, and
+# other zup and amp_cutoff values.
+#
+# Columns, separated by "|":
+#   name | diminution | RV line | damping
+#
+# rv_quirk_kappa_mdep shows the loop driver ignoring dkappadmag.
+
+rv_bj84             | 25.0 0.03 0.0 6.0    | 10.0 0.00001 0.001 1  | 0.05
+rv_lp99             | 25.0 0.03 0.0 6.0    | 10.0 0.00001 0.001 2  | 0.05
+rv_bt15_wna         | 25.0 0.03 0.0 6.0    | 10.0 0.00001 0.001 3  | 0.05
+rv_bt15_ena         | 25.0 0.03 0.0 6.0    | 10.0 0.00001 0.001 4  | 0.05
+rv_bt15_average     | 25.0 0.03 0.0 6.0    | 10.0 0.00001 0.001 5  | 0.05
+rv_bj84_damp02      | 25.0 0.03 0.0 6.0    | 10.0 0.00001 0.001 1  | 0.02
+rv_lp99_damp10      | 25.0 0.03 0.0 6.0    | 10.0 0.00001 0.001 2  | 0.10
+rv_bt15_wna_damp10  | 25.0 0.03 0.0 6.0    | 10.0 0.00001 0.001 3  | 0.10
+rv_kappa_only       | 0.0 0.03 0.0 6.0     | 10.0 0.00001 0.001 1  | 0.05
+rv_fmax_only        | 15.0 0.0 0.0 6.0     | 10.0 0.00001 0.001 1  | 0.05
+rv_zup5_cutoff01    | 25.0 0.03 0.0 6.0    | 5.0 0.00001 0.01 1    | 0.05
+rv_quirk_kappa_mdep | 25.0 0.03 0.01 6.0   | 10.0 0.00001 0.001 1  | 0.05

@@ -37,6 +37,11 @@
 # instrument response) for every shipped .params file at M 5 and 7, Rrup
 # 10 km, on 41 frequencies from 0.01 to 100 Hz, with oscillators of 5%
 # damping at 0.01, 0.1, 1 and 10 s, saved as response/<stem>.M<m>.txt.
+# And rv_cases/: tmrsk_loop_rv_drvr for each synthetic RV case in
+# oracle/inputs/rv_cases.txt (ofr.params with the diminution and RV lines
+# replaced, and the damping of the control file), saved as
+# rv_cases/<case>.col. And example/: the shipped example .col file and the
+# same run with this build (oracle/run_example.sh).
 # The control files take k0 and stress from the params file; their headers
 # list the magnitudes, distances, periods and frequencies.
 #
@@ -73,9 +78,11 @@ mkdir -p "$RUN_DIR"
 mkdir -p "$OUT_DIR"
 OUT_DIR=$(cd "$OUT_DIR" && pwd)
 rm -rf "$OUT_DIR/rv" "$OUT_DIR/fas" "$OUT_DIR/td" "$OUT_DIR/factors" "$OUT_DIR/source" \
-    "$OUT_DIR/path" "$OUT_DIR/site" "$OUT_DIR/site_lines" "$OUT_DIR/response"
+    "$OUT_DIR/path" "$OUT_DIR/site" "$OUT_DIR/site_lines" "$OUT_DIR/response" \
+    "$OUT_DIR/rv_cases" "$OUT_DIR/example"
 mkdir -p "$OUT_DIR/rv" "$OUT_DIR/fas" "$OUT_DIR/factors" "$OUT_DIR/source" "$OUT_DIR/path" \
-    "$OUT_DIR/site" "$OUT_DIR/site_lines" "$OUT_DIR/response"
+    "$OUT_DIR/site" "$OUT_DIR/site_lines" "$OUT_DIR/response" "$OUT_DIR/rv_cases" \
+    "$OUT_DIR/example"
 [ "$SKIP_TD" = 1 ] || mkdir -p "$OUT_DIR/td"
 
 # prepare <dir>: params files with bare .pars file names (they are written
@@ -233,6 +240,39 @@ while IFS='|' read -r name amps dimin lowcut highcut; do
         cp "$dir/$out" "$OUT_DIR/site/$out"
     done
 done
+
+# Synthetic random-vibration cases: replace the diminution line (the 29th
+# value line) and the RV line (the 32nd) of ofr.params, and the damping in
+# the control file
+dir="$RUN_DIR/rv_cases"
+prepare "$dir"
+grep -v '^ *#' "$ORACLE_DIR/inputs/rv_cases.txt" | grep -v '^ *$' |
+while IFS='|' read -r name dimin rvline damping; do
+    name=$(echo "$name" | tr -d ' ')
+    damping=$(echo "$damping" | tr -d ' ')
+    echo "rv_cases: $name"
+    awk -v dimin="$dimin" -v rvline="$rvline" '
+        /^ *!/ { print; next }
+        { n++ }
+        n == 29 { print " " dimin; next }
+        n == 32 { print " " rvline; next }
+        { print }' "$dir/ofr.params" > "$dir/$name.params"
+    sed -e "s|@PARAMS@|$name.params|" -e "s|@COL@|$name.col|" \
+        "$ORACLE_DIR/inputs/tmrsk_loop_rv_drvr.ctl" |
+        awk -v damping="$damping" '
+            done_damping == 0 && prev ~ /^!FractionalDamping/ { print " " damping; done_damping = 1; prev = $0; next }
+            { print; prev = $0 }' > "$dir/$name.ctl"
+    (cd "$dir" && echo "$name.ctl" | "$BIN_DIR/tmrsk_loop_rv_drvr" > "$name.stdout.txt" 2>&1)
+    cp "$dir/$name.col" "$OUT_DIR/rv_cases/$name.col"
+done
+
+# The shipped example of tmrsk_loop_rv_drvr: the reference .col file from
+# the distribution and the same run with this build (oracle/run_example.sh)
+"$ORACLE_DIR/run_example.sh" "$SMSIM_DIR" "$PRECISION" > /dev/null || true
+tr -d '\r' < "$SMSIM_DIR/example.tmrsk_loop_rv_drvr/tmrsk_loop_rv_drvr.col" \
+    > "$OUT_DIR/example/tmrsk_loop_rv_drvr.shipped.col"
+cp "$ORACLE_DIR/build/run_example/$PRECISION/tmrsk_loop_rv_drvr.col" \
+    "$OUT_DIR/example/tmrsk_loop_rv_drvr.$PRECISION.col"
 
 # Site and filter value lines of the shipped .params files: from the
 # crustal-amplification comment to the RV comment, without comments
