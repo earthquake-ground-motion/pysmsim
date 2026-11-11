@@ -116,13 +116,22 @@ def _summary(config: RunConfig) -> str:
     return "\n".join(lines)
 
 
+def _load(path: Path) -> RunConfig | None:
+    """Read a run file, or print why it cannot be read and return None."""
+    try:
+        return load_config(path)
+    except ConfigError as err:  # its message starts with the path
+        print(err, file=sys.stderr)
+    except OSError as err:
+        print(f"{path}: cannot read the file: {err.strerror or err}", file=sys.stderr)
+    return None
+
+
 def _check(args: argparse.Namespace) -> int:
     status = 0
     for path in args.configs:
-        try:
-            config = load_config(path)
-        except (ConfigError, OSError) as err:
-            print(f"{path}: invalid\n{err}", file=sys.stderr)
+        config = _load(path)
+        if config is None:
             status = 1
             continue
         if not args.quiet:
@@ -147,10 +156,8 @@ def _output(args: argparse.Namespace, config: RunConfig) -> tuple[Path, OutputFo
 
 
 def _run(args: argparse.Namespace) -> int:
-    try:
-        config = load_config(args.config)
-    except (ConfigError, OSError) as err:
-        print(f"{args.config}: invalid\n{err}", file=sys.stderr)
+    config = _load(args.config)
+    if config is None:
         return 1
     path, fmt = _output(args, config)
     if fmt is OutputFormat.COL and args.no_rv:

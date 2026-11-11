@@ -142,7 +142,8 @@ def test_check_reports_invalid_files(tmp_path: Path, capsys: pytest.CaptureFixtu
     captured = capsys.readouterr()
     assert f"{EXAMPLE}: OK" in captured.out
     assert f"{bad}: invalid" in captured.err and "scenarios.damping" in captured.err
-    assert f"{missing}: invalid" in captured.err
+    assert f"{missing}: cannot read the file" in captured.err
+    assert captured.err.count(f"{bad}:") == 1
     assert main(["check", "-q", str(EXAMPLE)]) == 0
     assert capsys.readouterr().out == ""
 
@@ -224,3 +225,35 @@ def test_python_m(config_file: Path) -> None:
         check=False,
     )
     assert done.returncode == 0, done.stderr
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "name"),
+    [
+        ("count = 200 }", "count = 300000000 }", "periods"),
+        ("count = 41 }", "count = 1001 }", "frequencies"),
+        (
+            "frequencies = { start = 0.01, stop = 100.0, count = 41 }",
+            "frequencies = [" + ", ".join(str(0.01 * (i + 1)) for i in range(1001)) + "]",
+            "frequencies",
+        ),
+    ],
+)
+def test_too_many_periods_or_frequencies(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], old: str, new: str, name: str
+) -> None:
+    # Refused while the file is read, before the values are expanded
+    path = tmp_path / "big.toml"
+    path.write_text(EXAMPLE.read_text().replace(old, new))
+    assert main(["check", str(path)]) == 1
+    err = capsys.readouterr().err
+    assert "at most 1000 periods and 1000 frequencies" in err
+    assert f"reduce the number of {name}" in err
+
+
+def test_grid_limits() -> None:
+    ScenarioGrid(magnitudes=(5.0,), distances=(10.0,), periods=(1.0,) * 1000)
+    with pytest.raises(ValueError, match="reduce the number of periods"):
+        ScenarioGrid(magnitudes=(5.0,), distances=(10.0,), periods=(1.0,) * 1001)
+    with pytest.raises(ValueError, match="reduce the number of frequencies"):
+        ScenarioGrid(magnitudes=(5.0,), distances=(10.0,), frequencies=(1.0,) * 1001)

@@ -58,6 +58,7 @@ from pysmsim.scenario import (
     OutputSettings,
     RjbToRrup,
     ScenarioGrid,
+    check_spectral_points,
 )
 from pysmsim.spectrum.attenuation import Q_MODELS, QModel
 from pysmsim.spectrum.filters import HIGH_CUT_MODELS, Filters, HighCutFilter, LowCutFilter
@@ -626,6 +627,15 @@ class ScenariosSection(_Section):
     frequencies: _Values = ()
     kappa0: _Values | None = None
     stress: _Values | None = None
+
+    @model_validator(mode="after")
+    def _check_sizes(self) -> ScenariosSection:
+        # Before the values are expanded, so that a huge count fails at once
+        for name in ("periods", "frequencies"):
+            values = getattr(self, name)
+            count = values.count if isinstance(values, LogSpacedSection) else len(values)
+            check_spectral_points(name, count)
+        return self
 
     def build(self) -> ScenarioGrid:
         return ScenarioGrid(

@@ -127,6 +127,19 @@ class OutputSettings:
     format: OutputFormat = OutputFormat.CSV
 
 
+MAX_SPECTRAL_POINTS = 1000
+"""Most periods, and most frequencies, a grid may have."""
+
+
+def check_spectral_points(name: str, count: int) -> None:
+    """Raise ValueError if a grid would have more than 1,000 periods or frequencies."""
+    if count > MAX_SPECTRAL_POINTS:
+        raise ValueError(
+            f"{count} {name} requested, but a run may have at most {MAX_SPECTRAL_POINTS} "
+            f"periods and {MAX_SPECTRAL_POINTS} frequencies; reduce the number of {name}"
+        )
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ScenarioGrid:
     """The magnitudes, distances and ground-motion measures of a run.
@@ -150,14 +163,15 @@ class ScenarioGrid:
     depth_function : DepthFunction
         Depth for the ``magnitude_function`` conversion.
     periods : tuple of float
-        Oscillator periods (s) for response spectra.
+        Oscillator periods (s) for response spectra; at most 1,000.
     pga, pgv : bool
         Whether to compute PGA and PGV.
     damping : float
         Oscillator damping, as a fraction of critical.
     frequencies : tuple of float
         Frequencies (Hz) at which a run also gives the Fourier acceleration
-        spectrum (see :func:`pysmsim.drivers.run.run`); none by default.
+        spectrum (see :func:`pysmsim.drivers.run.run`); none by default and
+        at most 1,000.
     kappa0 : tuple of float or None
         If given, loop over these kappa_0 values instead of the one in the
         parameters (and make kappa independent of magnitude, as the Fortran
@@ -194,3 +208,5 @@ class ScenarioGrid:
             raise ValueError(f"damping must be between 0 and 1, got {self.damping}")
         if any(f < 0 for f in self.frequencies):
             raise ValueError("frequencies must not be negative")
+        check_spectral_points("periods", len(self.periods))
+        check_spectral_points("frequencies", len(self.frequencies))

@@ -13,7 +13,8 @@ First release: the random-vibration method of SMSIM 2023-03-03.
   factors, and the BJ84, LP99 and BT15 oscillator corrections.
 - Loops over scenarios (`pysmsim.drivers`) and combined FAS and RV runs,
   written as CSV, Parquet, HDF5 or SMSIM's `.col` layout.
-- The `pysmsim run` and `pysmsim check` commands.
+- The `pysmsim run` and `pysmsim check` commands. A run may have at most
+  1,000 periods and 1,000 frequencies.
 - `fortran_compat` options that reproduce SMSIM's behaviour where pysmsim
   deliberately differs from it.
 
