@@ -75,6 +75,7 @@ __all__ = [
     "RunFile",
     "dumps_config",
     "load_config",
+    "params_table",
     "parse_config",
 ]
 
@@ -812,6 +813,16 @@ def _model_table(obj: Any) -> dict[str, Any]:
     return table
 
 
+def params_table(params: Params) -> dict[str, Any]:
+    """Return the tables of a run file that hold the model parameters, as a dict.
+
+    ``title`` and the sections ``[medium]`` to ``[td]``, as
+    :func:`dumps_config` writes them.
+    """
+    table: dict[str, Any] = _plain(params)
+    return table
+
+
 def dumps_config(config: RunConfig) -> str:
     """Write a :class:`RunConfig` as the text of a TOML run file.
 
@@ -819,7 +830,7 @@ def dumps_config(config: RunConfig) -> str:
     ``RunConfig``.
     """
     doc: dict[str, Any] = {"schema_version": SCHEMA_VERSION}
-    doc.update(_plain(config.params))
+    doc.update(params_table(config.params))
     doc["scenarios"] = _plain(config.scenarios)
     doc["output"] = _plain(config.output)
     return tomli_w.dumps(doc)
