@@ -23,6 +23,8 @@ import pytest
 from oracle_files import GOLDEN, read_rv_cases, shipped_params
 
 from pysmsim.drivers.loop_rv import rv_loop, rv_loop_details
+from pysmsim.drivers.run import run
+from pysmsim.io.results import write_col
 from pysmsim.params import Params
 from pysmsim.scenario import ScenarioGrid
 
@@ -169,7 +171,11 @@ EXAMPLE_NAMES = "damp T F M Rjb h Rrup F_FF Rps k0 numsource S gmim_g gmim_cgs".
 
 
 def read_example(name: str) -> pd.DataFrame:
-    path = GOLDEN / "example" / f"tmrsk_loop_rv_drvr.{name}.col"
+    return read_short_col(GOLDEN / "example" / f"tmrsk_loop_rv_drvr.{name}.col")
+
+
+def read_short_col(path: Path) -> pd.DataFrame:
+    """Read a .col file with the columns of the example (or pysmsim's write_col)."""
     lines = [line for line in path.read_text().splitlines() if not line.startswith("!")]
     rows = [[float(v) for v in line.split()] for line in lines[2:] if line.strip()]
     return pd.DataFrame(rows, columns=EXAMPLE_NAMES)
@@ -209,3 +215,29 @@ def test_shipped_example_one_row_per_scenario() -> None:
         assert len(rows) == 202
         y = table.iloc[i, -202:].to_numpy(dtype=np.float64)
         np.testing.assert_allclose(y, rows.gmim_cgs, rtol=1e-3)
+
+
+def test_shipped_example_col_output(tmp_path: Path) -> None:
+    # pysmsim's .col output against SMSIM's: same rows and columns
+    path = tmp_path / "example.col"
+    write_col(run(shipped_params(EXAMPLE_STEM), EXAMPLE_GRID, fortran_compat=True), path)
+    ours = read_short_col(path).sort_values(["k0", "M", "T"], kind="stable")
+    theirs = read_example("double").sort_values(["k0", "M", "T"], kind="stable")
+    assert len(ours) == len(theirs) == 1212
+    for name, atol in [
+        ("damp", 5e-4),
+        ("T", 0.0),
+        ("M", 5e-4),
+        ("Rjb", 5e-3),
+        ("h", 5e-3),
+        ("Rrup", 5e-3),
+        ("F_FF", 5e-4),
+        ("Rps", 5e-3),
+        ("k0", 5e-5),
+        ("numsource", 0.0),
+        ("S", 5e-3),
+    ]:
+        np.testing.assert_allclose(ours[name], theirs[name], rtol=1e-4, atol=atol, err_msg=name)
+    np.testing.assert_allclose(ours.F[ours["T"] > 0], theirs.F[theirs["T"] > 0], rtol=1e-4)
+    np.testing.assert_allclose(ours.gmim_cgs, theirs.gmim_cgs, rtol=1e-3)
+    np.testing.assert_allclose(ours.gmim_g, theirs.gmim_g, rtol=1e-3)
