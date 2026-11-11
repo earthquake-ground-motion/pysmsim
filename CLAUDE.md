@@ -101,6 +101,14 @@ Units are cgs (cm, s, g/cm³), with distances in km and g = 981 cm/s².
      `get_fup`) from `akappa`, the kappa at the reference magnitude, not
      from kappa at the scenario magnitude, so `dkappadmag` does not change
      `fup` (matters for the RV step);
+   - the loop drivers set `dkappadmag` and `amagkref` to 0 for every
+     kappa_0, including the one taken from the params file, so kappa never
+     depends on magnitude in a loop run (the `fortran_compat` argument of
+     `pysmsim.drivers.loop_fas.fas_loop`; pysmsim keeps the params-file
+     slope unless the grid gives kappa_0 values);
+   - the `gsprd*Qop` column of `fmrsk_loop_fas_drvr` uses Rps for every Q
+     model, though `spect_amp` uses Rrup for the Stafford Q (output only);
+     that driver also always uses the strike-slip CY14 Ztor;
    - `skipcmnt` always skips the line before the values it guards, comment
      or not, so a params file without that comment line is misread (matters
      for the converter).
@@ -181,7 +189,8 @@ Units are cgs (cm, s, g/cm³), with distances in km and g = 981 cm/s².
 src/pysmsim/
   params.py, scenario.py
   io/        config.py (TOML), legacy.py (convert), bt15_tables.py, results.py
-  spectrum/  source.py, path.py, site.py, filters.py, distance.py, fas.py
+  spectrum/  source.py, stress.py, finite_fault.py, spreading.py, attenuation.py,
+             site.py, filters.py, response.py, distance.py, fas.py
   rv/        moments.py, peak_factors.py, duration.py, gm_rv.py
   td/        noise.py, window.py, acc_ts.py, response.py, intensity.py, gm_td.py
   drivers/   loop_rv.py, loop_td.py, loop_fas.py

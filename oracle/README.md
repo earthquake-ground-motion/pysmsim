@@ -21,7 +21,8 @@ oracle/make_golden.sh /path/to/smsim.2023-03-03_version double
 ```
 
 `build.sh` compiles `tmrsk_loop_rv_drvr`, `fmrsk_loop_fas_drvr`,
-`tmrsk_loop_td_drvr` and the test-only `factor_dump` (see below) twice:
+`tmrsk_loop_td_drvr` and the test-only `factor_dump` and `response_dump`
+(see below) twice:
 
 - `oracle/build/bin/single/`: the code as written, which is mostly single
   precision;
@@ -59,6 +60,16 @@ program header defines each column. `product` multiplies the factors
 together and `fds` is `spect_amp` itself, so their agreement shows that no
 factor is missing.
 
+`programs/response_dump.for`, also test-only, sets up a scenario the same
+way and prints `spect_amp` with each response SMSIM supports: ground
+displacement, velocity and acceleration, oscillators at the periods given
+on the command line, and the Wood-Anderson and WWSSN short-period
+seismometers.
+
+```bash
+oracle/build/bin/double/response_dump PARAMS M RRUP OUTFILE NFREQ FMIN FMAX DAMP T1 [T2 ...]
+```
+
 `dump_factors.sh` runs `factor_dump` for every shipped `.params` file at
 M 4, 6 and 8 and Rrup 5, 20 and 100 km (override with `MAGS` and `RRUPS`),
 writing 54 files to `oracle/build/factors/<build>/`. It fails if `product`
@@ -83,7 +94,8 @@ models and the stress models, and for the synthetic path cases in
 `inputs/path_cases.txt`, which cover the finite-fault factors, spreading
 options and Q models that the shipped files do not use, and for the
 synthetic site cases in `inputs/site_cases.txt`, which cover the crustal
-amplification, kappa, fmax and the low-cut and high-cut filters. It also
+amplification, kappa, fmax and the low-cut and high-cut filters, and
+`response_dump` for every shipped file. It also
 saves the site and filter lines of each shipped `.params` file, so that the
 tests can rebuild those settings without the distribution. The
 double build takes about 7 minutes with gfortran 13.3, almost all of it in
@@ -140,7 +152,3 @@ The Python port works in float64, so the double build is its main reference.
 `run_example.sh` passes at a maximum relative difference of 2e-3 (`TOL`), not
 exact equality.
 
-## Not yet done
-
-- The oscillator response (`harmoscf`), which `factor_dump` leaves out
-  because it prints the Fourier spectrum without an instrument.

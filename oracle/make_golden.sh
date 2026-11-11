@@ -33,6 +33,10 @@
 # 20 km, on 41 frequencies from 0.01 to 100 Hz, saved as
 # site/<case>.M<m>.txt; and site_lines/: the site and filter value lines of
 # each shipped .params file, which the tests read in place of the file.
+# And response/: response_dump (spect_amp with each ground-motion and
+# instrument response) for every shipped .params file at M 5 and 7, Rrup
+# 10 km, on 41 frequencies from 0.01 to 100 Hz, with oscillators of 5%
+# damping at 0.01, 0.1, 1 and 10 s, saved as response/<stem>.M<m>.txt.
 # The control files take k0 and stress from the params file; their headers
 # list the magnitudes, distances, periods and frequencies.
 #
@@ -57,7 +61,7 @@ RUN_DIR="$ORACLE_DIR/build/golden/$PRECISION"
 OUT_DIR=${3:-"$ORACLE_DIR/../tests/golden/$PRECISION"}
 SKIP_TD=${SKIP_TD:-0}
 
-for prog in tmrsk_loop_rv_drvr fmrsk_loop_fas_drvr tmrsk_loop_td_drvr factor_dump; do
+for prog in tmrsk_loop_rv_drvr fmrsk_loop_fas_drvr tmrsk_loop_td_drvr factor_dump response_dump; do
     if [ ! -x "$BIN_DIR/$prog" ]; then
         echo "error: $BIN_DIR/$prog not found; run oracle/build.sh first" >&2
         exit 1
@@ -69,9 +73,9 @@ mkdir -p "$RUN_DIR"
 mkdir -p "$OUT_DIR"
 OUT_DIR=$(cd "$OUT_DIR" && pwd)
 rm -rf "$OUT_DIR/rv" "$OUT_DIR/fas" "$OUT_DIR/td" "$OUT_DIR/factors" "$OUT_DIR/source" \
-    "$OUT_DIR/path" "$OUT_DIR/site" "$OUT_DIR/site_lines"
+    "$OUT_DIR/path" "$OUT_DIR/site" "$OUT_DIR/site_lines" "$OUT_DIR/response"
 mkdir -p "$OUT_DIR/rv" "$OUT_DIR/fas" "$OUT_DIR/factors" "$OUT_DIR/source" "$OUT_DIR/path" \
-    "$OUT_DIR/site" "$OUT_DIR/site_lines"
+    "$OUT_DIR/site" "$OUT_DIR/site_lines" "$OUT_DIR/response"
 [ "$SKIP_TD" = 1 ] || mkdir -p "$OUT_DIR/td"
 
 # prepare <dir>: params files with bare .pars file names (they are written
@@ -121,6 +125,20 @@ for f in "$SMSIM_DIR"/params_and_pars_files/*.params; do
                 > /dev/null)
             cp "$dir/$out" "$OUT_DIR/factors/$out"
         done
+    done
+done
+
+dir="$RUN_DIR/response"
+prepare "$dir"
+for f in "$SMSIM_DIR"/params_and_pars_files/*.params; do
+    params=$(basename "$f")
+    stem=${params%.params}
+    echo "response: $stem"
+    for m in 5.0 7.0; do
+        out="$stem.M$m.txt"
+        (cd "$dir" && "$BIN_DIR/response_dump" "$params" "$m" 10.0 "$out" 41 0.01 100.0 \
+            0.05 0.01 0.1 1.0 10.0 > /dev/null)
+        cp "$dir/$out" "$OUT_DIR/response/$out"
     done
 done
 

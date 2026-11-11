@@ -29,7 +29,7 @@ import numpy.typing as npt
 
 from pysmsim._jit import Kernel, kernel
 
-__all__ = ["Q_MODELS", "PiecewiseQ", "QModel", "Stafford2022Q"]
+__all__ = ["Q_MODELS", "PiecewiseQ", "QModel", "SimpleQ", "Stafford2022Q"]
 
 FloatArray = npt.NDArray[np.float64]
 
@@ -111,6 +111,21 @@ class QModel(ABC):
         return np.exp(-math.pi * freqs * r / (self.c_q * self.q(freqs, magnitude)))
 
 
+def _simple_q(
+    f: FloatArray,
+    q0: float,
+    eta: float,
+) -> FloatArray:
+    out = np.empty_like(f)
+    for i in range(f.size):
+        fi = f[i]
+        if fi == 0.0:
+            out[i] = np.inf
+        else:
+            out[i] = q0 * fi**eta
+    return out
+
+
 def _piecewise_q(
     f: FloatArray,
     fr1: float,
@@ -147,6 +162,43 @@ def _stafford_2022_q(f: FloatArray, q0: float, eta: float) -> FloatArray:
 
 _PIECEWISE_Q_KERNEL = kernel(_piecewise_q)
 _STAFFORD_2022_Q_KERNEL = kernel(_stafford_2022_q)
+_SIMPLE_Q_KERNEL = kernel(_simple_q)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SimpleQ(QModel):
+    """Simple power law: Q = q0 * f**eta.
+
+    The path factor uses Rps. This is :class:`PiecewiseQ` with
+    qr1 = qr2 = q0, s1 = s2 = eta and fr1 = fr2 = 1, given by its two
+    parameters (SMSIM has no separate form for it).
+
+    Parameters
+    ----------
+    q0, eta : float
+        Q at 1 Hz and the exponent of the power law.
+    c_q : float
+        Velocity (km/s) in the path factor.
+    """
+
+    name: ClassVar[str] = "simple"
+    kernel: ClassVar[Kernel] = _SIMPLE_Q_KERNEL
+
+    q0: float
+    eta: float
+
+    def __post_init__(self) -> None:
+        QModel.__post_init__(self)
+        if self.q0 <= 0:
+            raise ValueError(f"q0 must be positive, got {self.q0}")
+
+    def kernel_args(self, magnitude: float) -> tuple[float, ...]:
+        """(q0, eta); Q does not depend on M."""
+        return (self.q0, self.eta)
+
+    def distance(self, rps: float, rrup: float) -> float:
+        """Return the distance (km) that the path factor uses: Rps."""
+        return rps
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -259,5 +311,5 @@ class Stafford2022Q(QModel):
         return rrup
 
 
-Q_MODELS: dict[str, type[QModel]] = {cls.name: cls for cls in (PiecewiseQ, Stafford2022Q)}
+Q_MODELS: dict[str, type[QModel]] = {cls.name: cls for cls in (PiecewiseQ, Stafford2022Q, SimpleQ)}
 """The Q classes by name."""

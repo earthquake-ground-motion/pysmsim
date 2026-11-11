@@ -16,7 +16,7 @@ from oracle_files import (
     read_path_cases,
 )
 
-from pysmsim.spectrum.attenuation import Q_MODELS
+from pysmsim.spectrum.attenuation import Q_MODELS, SimpleQ
 from pysmsim.spectrum.finite_fault import FINITE_FAULT_MODELS
 from pysmsim.spectrum.spreading import (
     SPREADING_MODELS,
@@ -82,7 +82,8 @@ def test_all_path_models_covered() -> None:
     models = list(PATH_CASES.values()) + list(SHIPPED_PATHS.values())
     assert {type(m.finite_fault) for m in models} == set(FINITE_FAULT_MODELS.values())
     assert {type(m.spreading) for m in models} == set(SPREADING_MODELS.values())
-    assert {type(m.q) for m in models} == set(Q_MODELS.values())
+    # SimpleQ has no SMSIM form; the unit tests compare it with PiecewiseQ
+    assert {type(m.q) for m in models} == set(Q_MODELS.values()) - {SimpleQ}
 
 
 @pytest.mark.parametrize("case", ["p_gs_ab14", "p_gs_ab14_r10"])

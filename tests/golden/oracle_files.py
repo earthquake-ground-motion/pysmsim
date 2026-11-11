@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 
+from pysmsim.params import Medium, Params, PathDuration
 from pysmsim.spectrum.attenuation import PiecewiseQ, QModel, Stafford2022Q
 from pysmsim.spectrum.filters import (
     Filters,
@@ -392,3 +393,53 @@ def read_site_cases() -> dict[str, SiteModels]:
         points = [p.split() for p in amps.split(";")]
         cases[name] = site_models(points, dimin, low_cut, high_cut)
     return cases
+
+
+# --- Whole params files ----------------------------------------------------
+
+# Density, shear velocity, prtitn, rtp and fs of the shipped .params files
+SHIPPED_MEDIA: dict[str, Medium] = {
+    "ena.scf.bt15scr_fff.bs11_atten.bt15_dp.dmb_3kps_amps_aoi_00.k0.006.bt15e_drms": Medium(
+        density=2.8, shear_velocity=3.6, partition=0.71
+    ),
+    "ofr": Medium(density=2.8, shear_velocity=3.6, partition=0.71),
+    "stafford.convenience_model": Medium(density=2.75, shear_velocity=3.5),
+    "stafford.optimal_model": Medium(density=2.75, shear_velocity=3.5),
+    "wna.scf.bt15acr_fff.rea99_atten.bt14_dp.bj97gr760_amps.k0.035.bt15w_drms": Medium(
+        density=2.72, shear_velocity=3.5
+    ),
+    "wna.scf.xfff.rea99_atten.bt14_dp.bj97gr760_amps.k0.035.bt15w_drms": Medium(
+        density=2.72, shear_velocity=3.5
+    ),
+}
+
+# The spectrum does not use the path duration; the RV tests will need the
+# real one
+_NO_PATH_DURATION = PathDuration(distances=(0.0,), durations=(0.0,))
+
+
+def params_from_parts(
+    medium: Medium, source: SourceSpectrum, path: PathModels, site: SiteModels
+) -> Params:
+    """Params made of the parts read from a params file."""
+    return Params(
+        title="golden",
+        medium=medium,
+        source=source,
+        finite_fault=path.finite_fault,
+        spreading=path.spreading,
+        q=path.q,
+        path_duration=_NO_PATH_DURATION,
+        site=site.site,
+        filters=site.filters,
+    )
+
+
+def shipped_params(stem: str) -> Params:
+    """The spectrum parameters of a shipped .params file."""
+    return params_from_parts(
+        SHIPPED_MEDIA[stem],
+        SHIPPED_SOURCES[stem][1],
+        SHIPPED_PATHS[stem],
+        read_shipped_sites()[stem],
+    )

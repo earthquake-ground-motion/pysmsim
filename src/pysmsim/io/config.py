@@ -450,7 +450,15 @@ class Stafford2022QSection(_QSection):
     eta_g: float
 
 
-QSection = Annotated[PiecewiseQSection | Stafford2022QSection, Field(discriminator="model")]
+class SimpleQSection(_QSection):
+    model: Literal["simple"]
+    q0: float = Field(gt=0, description="Q at 1 Hz")
+    eta: float = 0.0
+
+
+QSection = Annotated[
+    PiecewiseQSection | Stafford2022QSection | SimpleQSection, Field(discriminator="model")
+]
 """The ``[q]`` table."""
 
 

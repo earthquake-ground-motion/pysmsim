@@ -103,6 +103,22 @@ def test_site_checks(kwargs: dict[str, object], match: str) -> None:
         Site(**kwargs)  # type: ignore[arg-type]
 
 
+def test_site_accepts_arrays_and_lists() -> None:
+    site = Site(
+        amp_frequencies=np.array([0.1, 1.0, 10.0]),
+        amplifications=[1.0, 1.5, 3.0],  # type: ignore[arg-type]
+        kappa0=0.035,
+    )
+    assert site.amp_frequencies == (0.1, 1.0, 10.0)
+    assert site.amplifications == (1.0, 1.5, 3.0)
+    assert site == Site(
+        amp_frequencies=(0.1, 1.0, 10.0), amplifications=(1.0, 1.5, 3.0), kappa0=0.035
+    )
+    assert site.amplification(1.0) == pytest.approx(1.5)
+    with pytest.raises(ValueError, match="one-dimensional"):
+        Site(amp_frequencies=np.ones((2, 2)), amplifications=np.ones((2, 2)))  # type: ignore[arg-type]
+
+
 def test_site_is_frozen() -> None:
     with pytest.raises(FrozenInstanceError):
         SITE.kappa0 = 0.0  # type: ignore[misc]

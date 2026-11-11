@@ -6,7 +6,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from pysmsim.spectrum.attenuation import Q_MODELS, PiecewiseQ, QModel, Stafford2022Q
+from pysmsim.spectrum.attenuation import Q_MODELS, PiecewiseQ, QModel, SimpleQ, Stafford2022Q
 from pysmsim.spectrum.finite_fault import (
     FINITE_FAULT_MODELS,
     Generalized,
@@ -54,7 +54,7 @@ def test_registries() -> None:
             assert cls.name == name
     assert len(FINITE_FAULT_MODELS) == 6
     assert len(SPREADING_MODELS) == 8
-    assert len(Q_MODELS) == 2
+    assert len(Q_MODELS) == 3
 
 
 # --- Finite-fault factor ------------------------------------------------------
@@ -203,9 +203,10 @@ def test_reference_distance() -> None:
 
 PIECEWISE = PiecewiseQ(fr1=1.0, qr1=100.0, s1=0.8, ft1=0.5, ft2=5.0, fr2=10.0, qr2=1000.0, s2=0.3)
 STAFFORD = Stafford2022Q(q0=205.4, eta_a=0.6884, eta_b=0.1354, eta_g=5.1278)
+SIMPLE = SimpleQ(q0=180.0, eta=0.45)
 
 
-@pytest.mark.parametrize("q", [PIECEWISE, STAFFORD], ids=lambda q: q.name)
+@pytest.mark.parametrize("q", [PIECEWISE, STAFFORD, SIMPLE], ids=lambda q: q.name)
 def test_q_kernel_matches_numpy_twin(q: QModel) -> None:
     args = q.kernel_args(6.0)
     np.testing.assert_allclose(
@@ -213,7 +214,7 @@ def test_q_kernel_matches_numpy_twin(q: QModel) -> None:
     )
 
 
-@pytest.mark.parametrize("q", [PIECEWISE, STAFFORD], ids=lambda q: q.name)
+@pytest.mark.parametrize("q", [PIECEWISE, STAFFORD, SIMPLE], ids=lambda q: q.name)
 def test_no_attenuation_at_zero_frequency(q: QModel) -> None:
     assert q.q(0.0, 6.0) == np.inf
     assert q.attenuation(np.array([0.0, 1.0]), 6.0, 10.0, 10.0)[0] == 1.0
@@ -226,6 +227,22 @@ def test_piecewise_q_is_continuous() -> None:
         )
     constant = PiecewiseQ(qr1=180.0, qr2=180.0)
     assert np.all(constant.q(FREQS, 6.0) == 180.0)
+
+
+@pytest.mark.parametrize("eta", [-0.3, 0.0, 0.45])
+def test_simple_q_is_a_one_part_piecewise_q(eta: float) -> None:
+    f = np.concatenate(([0.0], FREQS))
+    simple = SimpleQ(q0=180.0, eta=eta, c_q=3.6)
+    piecewise = PiecewiseQ(qr1=180.0, s1=eta, qr2=180.0, s2=eta, c_q=3.6)
+    np.testing.assert_allclose(simple.q(f, 6.0), piecewise.q(f, 6.0), rtol=1e-13)
+    np.testing.assert_allclose(
+        simple.attenuation(f, 6.0, 50.0, 40.0),
+        piecewise.attenuation(f, 6.0, 50.0, 40.0),
+        rtol=1e-13,
+    )
+    assert simple.distance(50.0, 40.0) == 50.0
+    with pytest.raises(ValueError, match="q0 must be positive"):
+        SimpleQ(q0=0.0, eta=eta)
 
 
 def test_path_factor_and_distances() -> None:
