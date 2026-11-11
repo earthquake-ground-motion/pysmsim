@@ -29,6 +29,7 @@ oscillator corrections for WNA and ENA. The control files in
 | `factors/` | `factor_dump` | M 4, 6, 8; Rrup 5, 20, 100 km; 41 frequencies, 0.01-100 Hz | 41 (one file per M and Rrup) |
 | `fas/` | `fmrsk_loop_fas_drvr` | M 4-8 (step 1); Rjb 1, 5, 20, 50, 100, 300 km; 21 frequencies, 0.01-100 Hz | 630 |
 | `path/` | `factor_dump` | 17 synthetic path cases (below); M 3, 5, 7; Rrup 0.5, 5, 30, 55, 200 km; 21 frequencies, 0.01-100 Hz | 21 (one file per case, M and Rrup) |
+| `response/` | `response_dump` | M 5, 7; Rrup 10 km; 41 frequencies, 0.01-100 Hz; ground displacement, velocity and acceleration, oscillators at 0.01, 0.1, 1 and 10 s (5% damping), Wood-Anderson and WWSSN-SP | 41 (one file per params file and M) |
 | `rv/` | `tmrsk_loop_rv_drvr` | M 4-8 (step 1); Rjb 1, 5, 20, 50, 100, 300 km; PGV, PGA and PSA at 0.01, 0.1, 0.3, 1, 3, 10 s (5% damping) | 240 |
 | `source/` | `factor_dump` | 18 synthetic source cases (below); M 2, 3, 4.5, 5, 6, 8; Rrup 20 km; 21 frequencies, 0.01-100 Hz | 21 (one file per case and M) |
 | `site/` | `factor_dump` | 10 synthetic site and filter cases (below); M 4, 6, 8; Rrup 20 km; 41 frequencies, 0.01-100 Hz | 41 (one file per case and M) |

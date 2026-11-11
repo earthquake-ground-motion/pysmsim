@@ -75,8 +75,9 @@ class Site:
 
     Parameters
     ----------
-    amp_frequencies, amplifications : tuple of float
-        Crustal amplification table. Between the frequencies it is
+    amp_frequencies, amplifications : sequence of float
+        Crustal amplification table (tuples, lists or NumPy arrays; stored
+        as tuples). Between the frequencies it is
         interpolated linearly in frequency and logarithmically in amplitude;
         below the first and above the last frequency it is constant.
     kappa0 : float
@@ -102,6 +103,13 @@ class Site:
     fmax: float = 0.0
 
     def __post_init__(self) -> None:
+        # Accept any sequence or array, and keep tuples so that the object
+        # stays hashable and comparable with ==
+        for name in ("amp_frequencies", "amplifications"):
+            values = np.asarray(getattr(self, name), dtype=np.float64)
+            if values.ndim != 1:
+                raise ValueError(f"{name} must be one-dimensional")
+            object.__setattr__(self, name, tuple(float(v) for v in values))
         if len(self.amp_frequencies) != len(self.amplifications):
             raise ValueError("amp_frequencies and amplifications must have the same length")
         if not self.amp_frequencies:

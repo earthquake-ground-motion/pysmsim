@@ -25,6 +25,7 @@ or read from a TOML run file with :func:`pysmsim.io.config.load_config`.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from enum import StrEnum
 from itertools import pairwise
@@ -88,6 +89,28 @@ class Medium:
     def __post_init__(self) -> None:
         if self.density <= 0 or self.shear_velocity <= 0:
             raise ValueError("density and shear_velocity must be positive")
+
+    def radiation_constant(self, reference_distance: float = 1.0) -> float:
+        """Constant of the Fourier displacement spectrum (Fortran ``const``).
+
+        prtitn*rtp*fs*1e-20 / (4*pi*rho*beta**3*r_ref), as in SMSIM's
+        ``const_am0_gsprd``; multiplied by M0 (dyne-cm) and the other
+        factors it gives the spectrum in cm-s. The 1e-20 converts the units
+        (km to cm for beta and r_ref).
+
+        Parameters
+        ----------
+        reference_distance : float
+            r_ref (km), from
+            :meth:`~pysmsim.spectrum.spreading.GeometricalSpreading.reference_distance`.
+        """
+        return (
+            self.partition
+            * self.radiation
+            * self.free_surface
+            * 1.0e-20
+            / (4.0 * math.pi * self.density * self.shear_velocity**3 * reference_distance)
+        )
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

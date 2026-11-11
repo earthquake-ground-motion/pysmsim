@@ -98,6 +98,15 @@ class DepthFunction:
     m2: float = 7.5
     h2: float = 0.0
 
+    def depth(self, magnitude: float) -> float:
+        """Depth h (km) at a moment magnitude (case 1 of Fortran ``h4rjb2rrup_f``)."""
+        if magnitude <= self.m1:
+            return self.h1
+        if magnitude >= self.m2:
+            return self.h2
+        dm = magnitude - self.m1
+        return self.h1 + self.c1 * dm + self.c2 * dm**2 + self.c3 * dm**3
+
 
 class OutputFormat(StrEnum):
     """File format of the results table."""

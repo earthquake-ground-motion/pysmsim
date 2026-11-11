@@ -10,7 +10,7 @@ import pytest
 from pysmsim.io.config import ConfigError, dumps_config, load_config, parse_config
 from pysmsim.params import OscillatorCorrection
 from pysmsim.scenario import DistanceMetric, RjbToRrup
-from pysmsim.spectrum.attenuation import PiecewiseQ, Stafford2022Q
+from pysmsim.spectrum.attenuation import PiecewiseQ, SimpleQ, Stafford2022Q
 from pysmsim.spectrum.filters import NoHighCut, QuarterCosineHighCut, RaisedCosineHighCut
 from pysmsim.spectrum.finite_fault import (
     Generalized,
@@ -202,6 +202,8 @@ def test_source_models_by_name(
             },
             Stafford2022Q(q0=205.4, eta_a=0.6884, eta_b=0.1354, eta_g=5.1278),
         ),
+        ("q", {"model": "simple", "q0": 180.0, "eta": 0.45}, SimpleQ(q0=180.0, eta=0.45)),
+        ("q", {"model": "simple", "q0": 180.0, "c_q": 3.6}, SimpleQ(q0=180.0, eta=0.0, c_q=3.6)),
     ],
 )
 def test_path_models_by_name(
