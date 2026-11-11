@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 from oracle_files import GOLDEN, shipped_params
 
-from pysmsim.drivers.loop_fas import fas_loop
+from pysmsim.drivers.loop_fas import fas_column, fas_loop, fas_loop_details
 from pysmsim.scenario import DistanceMetric, RjbToRrup, ScenarioGrid
 from pysmsim.spectrum.attenuation import Stafford2022Q
 
@@ -41,7 +41,7 @@ def read_col(path: Path) -> pd.DataFrame:
 def test_fas_loop(path: Path) -> None:
     params = shipped_params(path.stem)
     golden = read_col(path)
-    table = fas_loop(params, GRID, FREQUENCIES)
+    table = fas_loop_details(params, GRID, FREQUENCIES)
     assert len(table) == len(golden)
 
     # Each value against the precision it is printed with
@@ -57,7 +57,6 @@ def test_fas_loop(path: Path) -> None:
         ("stress", 1e-5, 0.0),
         ("fds", 1e-7, 0.0),
         ("fas", 1e-7, 0.0),
-        ("fas_g", 1e-6, 0.0),
         ("gsprd", 1e-4, 0.0),
         ("q", 1e-4, 0.0),
     ]:
@@ -74,3 +73,14 @@ def test_fas_loop(path: Path) -> None:
     else:
         expected = table["gsprd_q"]
     np.testing.assert_allclose(expected, golden["gsprd_q"], rtol=1e-4)
+
+
+def test_fas_loop_one_row_per_scenario() -> None:
+    path = sorted((GOLDEN / "fas").glob("*.col"))[0]
+    golden = read_col(path)
+    table = fas_loop(shipped_params(path.stem), GRID, FREQUENCIES)
+    assert len(table) == len(GRID.magnitudes) * len(GRID.distances)
+    names = [fas_column(f) for f in FREQUENCIES]
+    assert list(table.columns[-21:]) == names
+    expected = golden.fas.to_numpy().reshape(len(table), FREQUENCIES.size)
+    np.testing.assert_allclose(table[names].to_numpy(), expected, rtol=1e-7)

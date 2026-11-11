@@ -95,7 +95,11 @@ models and the stress models, and for the synthetic path cases in
 options and Q models that the shipped files do not use, and for the
 synthetic site cases in `inputs/site_cases.txt`, which cover the crustal
 amplification, kappa, fmax and the low-cut and high-cut filters, and
-`response_dump` for every shipped file. It also
+`response_dump` for every shipped file. It runs `tmrsk_loop_rv_drvr` for the
+synthetic RV cases in `inputs/rv_cases.txt`, which cover the oscillator
+corrections, dampings and fup settings the shipped files do not use, and
+copies the shipped example `.col` file with the same run from this build
+(`run_example.sh`). It also
 saves the site and filter lines of each shipped `.params` file, so that the
 tests can rebuild those settings without the distribution. The
 double build takes about 7 minutes with gfortran 13.3, almost all of it in

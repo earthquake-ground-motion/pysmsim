@@ -9,7 +9,14 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from pysmsim.drivers.loop_fas import FAS_COLUMNS, G, fas_loop, params_for
+from pysmsim.drivers.loop_fas import (
+    FAS_DETAIL_COLUMNS,
+    FAS_SCENARIO_COLUMNS,
+    fas_column,
+    fas_loop,
+    fas_loop_details,
+    params_for,
+)
 from pysmsim.io.config import load_config
 from pysmsim.params import Medium
 from pysmsim.scenario import DepthFunction, DistanceMetric, Mechanism, RjbToRrup, ScenarioGrid
@@ -158,9 +165,9 @@ GRID = ScenarioGrid(magnitudes=(5.0, 6.0), distances=(0.0, 10.0, 50.0))
 F = np.array([0.0, 0.1, 1.0, 10.0])
 
 
-def test_fas_loop_table() -> None:
-    table = fas_loop(PARAMS, GRID, F)
-    assert tuple(table.columns) == FAS_COLUMNS
+def test_fas_loop_details_table() -> None:
+    table = fas_loop_details(PARAMS, GRID, F)
+    assert tuple(table.columns) == FAS_DETAIL_COLUMNS
     assert len(table) == 2 * 3 * 4
     # Loop order: magnitude, distance, frequency
     assert list(table["magnitude"][:12]) == [5.0] * 12
@@ -172,25 +179,53 @@ def test_fas_loop_table() -> None:
     assert row["rrup"] == pytest.approx(math.hypot(10.0, row["h"]))
     expected = fourier_spectrum(1.0, PARAMS, 5.0, row["rrup"])
     assert row["fds"] == pytest.approx(expected)
-    assert row["fas_g"] == pytest.approx(row["fas"] / G)
     assert row["fas"] == pytest.approx((2.0 * math.pi) ** 2 * row["fds"])
+
+
+def test_fas_loop_one_row_per_scenario() -> None:
+    grid = replace(GRID, kappa0=(0.01, 0.04))
+    details = fas_loop_details(PARAMS, grid, F)
+    table = fas_loop(PARAMS, grid, F)
+    names = ["fas(0)", "fas(0.1)", "fas(1)", "fas(10)"]
+    assert list(table.columns) == [*FAS_SCENARIO_COLUMNS, *names]
+    # Order: kappa_0, magnitude, distance
+    assert len(table) == 2 * 2 * 3
+    assert table.kappa0.tolist() == [0.01] * 6 + [0.04] * 6
+    assert table.magnitude.tolist()[:6] == [5.0] * 3 + [6.0] * 3
+    assert table.rjb.tolist()[:3] == [0.0, 10.0, 50.0]
+    for i, f in enumerate(F):
+        rows = details[details.f == f]
+        np.testing.assert_array_equal(table[names[i]], rows.fas)
+        for name in FAS_SCENARIO_COLUMNS:
+            np.testing.assert_array_equal(table[name], rows[name], err_msg=name)
+
+
+def test_fas_loop_rejects_bad_frequencies() -> None:
+    for f in ([], [1.0, 1.0000001], np.ones((2, 2))):
+        with pytest.raises(ValueError, match="frequencies"):
+            fas_loop(PARAMS, GRID, f)
+
+
+def test_fas_column() -> None:
+    assert fas_column(0.01) == "fas(0.01)"
+    assert fas_column(100.0) == "fas(100)"
 
 
 def test_fas_loop_with_rrup() -> None:
     grid = replace(GRID, distances=(10.0,), distance_metric=DistanceMetric.RRUP)
-    table = fas_loop(PARAMS, grid, F)
+    table = fas_loop_details(PARAMS, grid, F)
     assert table["rjb"].isna().all() and table["h"].isna().all()
     assert (table["rrup"] == 10.0).all()
 
 
 def test_fas_loop_kappa_and_stress_loops() -> None:
     grid = replace(GRID, kappa0=(0.01, 0.04), stress=(50.0, 100.0, 200.0))
-    table = fas_loop(PARAMS, grid, F)
+    table = fas_loop_details(PARAMS, grid, F)
     assert len(table) == 2 * 3 * 2 * 3 * 4
     assert list(table["kappa0"].unique()) == [0.01, 0.04]
     assert list(table["stress"][: 2 * 3 * 4].unique()) == [50.0]
     with pytest.raises(ValueError, match="one-dimensional"):
-        fas_loop(PARAMS, GRID, np.ones((2, 2)))
+        fas_loop_details(PARAMS, GRID, np.ones((2, 2)))
 
 
 def test_params_for() -> None:

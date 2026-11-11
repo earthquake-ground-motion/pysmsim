@@ -3,14 +3,18 @@
 :func:`fas_loop` computes the Fourier amplitude spectrum for every
 combination of kappa_0, stress, magnitude and distance in a
 :class:`~pysmsim.scenario.ScenarioGrid` and returns a table with one row per
-frequency, in the order of SMSIM's loops (kappa_0, stress, magnitude,
-distance, frequency)::
+scenario, in the order of SMSIM's loops (kappa_0, stress, magnitude,
+distance), and the acceleration spectrum at each frequency as a column
+``fas(f)``::
 
     import numpy as np
     from pysmsim.io.config import load_config
     from pysmsim.drivers.loop_fas import fas_loop
     config = load_config("run.toml")
     table = fas_loop(config.params, config.scenarios, np.logspace(-2, 2, 21))
+
+:func:`fas_loop_details` gives instead one row per scenario and frequency,
+with the displacement spectrum, spreading and Q as well.
 
 The driver only composes the functions of :mod:`pysmsim.spectrum`.
 """
@@ -30,12 +34,16 @@ from pysmsim.spectrum.distance import rjb_to_rrup_depth
 from pysmsim.spectrum.fas import spectrum_factors
 from pysmsim.spectrum.stress import LogLinearStress
 
-__all__ = ["FAS_COLUMNS", "G", "fas_loop", "params_for"]
+__all__ = [
+    "FAS_DETAIL_COLUMNS",
+    "FAS_SCENARIO_COLUMNS",
+    "fas_column",
+    "fas_loop",
+    "fas_loop_details",
+    "params_for",
+]
 
-G = 981.0
-"""Acceleration of gravity (cm/s^2), as in SMSIM."""
-
-FAS_COLUMNS = (
+FAS_DETAIL_COLUMNS = (
     "f",
     "period",
     "magnitude",
@@ -48,21 +56,29 @@ FAS_COLUMNS = (
     "stress",
     "fds",
     "fas",
-    "fas_g",
     "gsprd",
     "q",
     "gsprd_q",
 )
-"""Columns of the table from :func:`fas_loop`.
+"""Columns of the table from :func:`fas_loop_details`.
 
 f (Hz), period (s; inf at f = 0), magnitude, rjb (km; NaN when the grid
 gives Rrup), h (km, the depth of the Rjb-to-Rrup conversion; NaN when the
 grid gives Rrup), rrup, f_ff (finite-fault factor, km), rps (km), kappa0
 (s), stress (bars; NaN for source models without one), fds (displacement
-spectrum, cm-s), fas (acceleration spectrum, cm/s), fas_g (fas/g, g-s),
+spectrum, cm-s), fas (acceleration spectrum, cm/s),
 gsprd (geometrical spreading), q (Q(f)) and gsprd_q (spreading times the
 anelastic path factor).
 """
+
+FAS_SCENARIO_COLUMNS = ("magnitude", "rjb", "h", "rrup", "f_ff", "rps", "kappa0", "stress")
+"""The columns of :func:`fas_loop` that describe each scenario (see
+:data:`FAS_DETAIL_COLUMNS`); the spectrum columns follow them."""
+
+
+def fas_column(frequency: float) -> str:
+    """Name of the FAS column for a frequency (Hz): ``fas(f)``, f with up to 6 digits."""
+    return f"fas({frequency:g})"
 
 
 def params_for(
@@ -113,7 +129,45 @@ def fas_loop(
     *,
     fortran_compat: bool = False,
 ) -> pd.DataFrame:
-    """Fourier spectra for every scenario of a grid.
+    """Fourier acceleration spectra, one row per scenario of a grid.
+
+    Parameters and options as for :func:`fas_loop_details`.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The columns :data:`FAS_SCENARIO_COLUMNS`, then ``fas(f)``, the
+        acceleration spectrum (cm/s), for each frequency f in the order
+        given. The rows are in the order kappa_0, stress, magnitude,
+        distance.
+
+    Raises
+    ------
+    ValueError
+        If there are no frequencies, or two give the same column name.
+    """
+    f = np.asarray(frequencies, dtype=np.float64)
+    if f.ndim != 1 or f.size == 0:
+        raise ValueError("frequencies must be a non-empty one-dimensional array")
+    names = [fas_column(x) for x in f]
+    if len(set(names)) != len(names):
+        raise ValueError("frequencies must be distinct to 6 significant digits")
+    details = fas_loop_details(params, grid, f, fortran_compat=fortran_compat)
+    # Each scenario is a block of rows, one per frequency
+    first = details.iloc[:: f.size]
+    table = first[list(FAS_SCENARIO_COLUMNS)].reset_index(drop=True)
+    spectra = pd.DataFrame(details.fas.to_numpy().reshape(len(table), f.size), columns=names)
+    return pd.DataFrame(pd.concat([table, spectra], axis=1))
+
+
+def fas_loop_details(
+    params: Params,
+    grid: ScenarioGrid,
+    frequencies: npt.ArrayLike,
+    *,
+    fortran_compat: bool = False,
+) -> pd.DataFrame:
+    """Fourier spectra and their factors for every scenario of a grid.
 
     Parameters
     ----------
@@ -133,7 +187,7 @@ def fas_loop(
     -------
     pandas.DataFrame
         One row per scenario and frequency, with the columns
-        :data:`FAS_COLUMNS`.
+        :data:`FAS_DETAIL_COLUMNS`.
 
     Notes
     -----
@@ -183,10 +237,11 @@ def fas_loop(
                             ),
                             "fds": fds,
                             "fas": acc * fds,
-                            "fas_g": acc * fds / G,
                             "gsprd": factors.spreading,
                             "q": run.q.q(f, magnitude),
                             "gsprd_q": factors.spreading * factors.q_path,
                         }
                     )
-    return pd.DataFrame({name: np.concatenate([b[name] for b in blocks]) for name in FAS_COLUMNS})
+    return pd.DataFrame(
+        {name: np.concatenate([b[name] for b in blocks]) for name in FAS_DETAIL_COLUMNS}
+    )
