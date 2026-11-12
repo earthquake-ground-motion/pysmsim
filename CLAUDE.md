@@ -266,6 +266,17 @@ physics.
   (2026-11-11) rather than emulating `odeint`; explain it in the user
   documentation in phase 4.
 
+## Continuous integration
+
+- `.github/workflows/ci.yml`: lint (ruff format and check on src, tests,
+  docs/_scripts and examples/benchmark.py; mypy on src), tests with
+  `-m "not slow"` on ubuntu-latest and macos-latest x Python 3.12 and 3.13
+  x Numba compiled and `NUMBA_DISABLE_JIT=1`, and `-m slow` once (Linux,
+  3.13). `docs.yml`: `mkdocs build --strict`, and on `main` deploy to
+  GitHub Pages (Settings > Pages > Source: GitHub Actions). Every job runs
+  `uv sync --locked`, so run `uv lock` after changing dependencies. No
+  secrets are needed.
+
 ## How we work
 
 - Develop in small steps. Each step gets its own new Git branch from `main`,

@@ -1,5 +1,12 @@
 # pysmsim
 
+<p align="center">
+  <img src="docs/assets/logo-circle.png" alt="pysmsim logo" width="260">
+</p>
+
+[![CI](https://github.com/earthquake-ground-motion/pysmsim/actions/workflows/ci.yml/badge.svg)](https://github.com/earthquake-ground-motion/pysmsim/actions/workflows/ci.yml)
+[![Docs](https://github.com/earthquake-ground-motion/pysmsim/actions/workflows/docs.yml/badge.svg)](https://earthquake-ground-motion.github.io/pysmsim/)
+
 Pure Python Library Implementing the SMSIM Methodology of (Boore, 2003)
 
 pysmsim is a Python port of David Boore's Fortran SMSIM programs (version
@@ -21,6 +28,10 @@ notebook, the comparison with SMSIM and the API reference. To read it:
 uv sync --extra docs
 uv run mkdocs serve        # then open http://127.0.0.1:8000
 ```
+
+Once GitHub Pages is switched on for the repository, the site is published
+at https://earthquake-ground-motion.github.io/pysmsim/ from every push to
+`main`.
 
 ## Installation
 

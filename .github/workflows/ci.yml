@@ -1,0 +1,77 @@
+# Lint, type-check and test pysmsim on every push to main and every pull request.
+#
+# - lint: ruff (format and lint) and mypy on src, once.
+# - test: the tests without the slow ones, on Linux and macOS, Python 3.12
+#   and 3.13, with the Numba kernels compiled and as plain Python
+#   (NUMBA_DISABLE_JIT=1).
+# - slow: the slow tests (800 time-domain simulations per scenario), once.
+#
+# Every job installs exactly the versions in uv.lock (uv sync --locked) and
+# needs no secrets: the Fortran golden files are in the repository.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push to a pull request cancels the runs of its older pushes
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: Lint and type-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - run: uv sync --locked --extra dev
+      - run: uv run --no-sync ruff format --check src tests docs/_scripts examples/benchmark.py
+      - run: uv run --no-sync ruff check src tests docs/_scripts examples/benchmark.py
+      - run: uv run --no-sync mypy src
+
+  test:
+    name: Tests (${{ matrix.os }}, Python ${{ matrix.python }}, ${{ matrix.numba }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.12", "3.13"]
+        numba: [jit, no-jit]
+    env:
+      # Plain Python for the no-jit runs, which must give the same results
+      NUMBA_DISABLE_JIT: ${{ matrix.numba == 'no-jit' && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+      - run: uv sync --locked --extra dev
+      - run: uv run --no-sync pytest -m "not slow"
+
+  slow:
+    name: Slow tests (ubuntu-latest, Python 3.13, jit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - run: uv sync --locked --extra dev
+      - run: uv run --no-sync pytest -m slow

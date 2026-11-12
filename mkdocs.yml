@@ -1,4 +1,5 @@
 site_name: pysmsim
+site_url: https://earthquake-ground-motion.github.io/pysmsim/
 site_description: Stochastic ground-motion simulations (SMSIM) in Python
 repo_url: https://github.com/earthquake-ground-motion/pysmsim
 repo_name: GitHub
@@ -8,6 +9,7 @@ strict: true
 
 theme:
   name: mkdocs
+  custom_dir: docs/_overrides    # the logo in the navigation bar
   color_mode: dark
   user_color_mode_toggle: true
   navigation_depth: 3
@@ -79,3 +81,6 @@ markdown_extensions:
 
 exclude_docs: |
   _scripts/
+  _overrides/
+  # the full logo image, used only for the social preview
+  assets/logo.png

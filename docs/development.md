@@ -29,6 +29,18 @@ uv run mypy src
 Every compiled kernel has a plain NumPy twin, and the unit tests check that
 the two agree.
 
+## Continuous integration
+
+Two GitHub Actions workflows run on every push to `main` and every pull
+request. Both install exactly the versions in `uv.lock`
+(`uv sync --locked`), so a change to the dependencies needs `uv lock`
+first.
+
+| Workflow | Jobs |
+| --- | --- |
+| `.github/workflows/ci.yml` | ruff and mypy; the tests except the slow ones on Linux and macOS, Python 3.12 and 3.13, with and without `NUMBA_DISABLE_JIT=1` (8 runs); the slow tests once |
+| `.github/workflows/docs.yml` | `mkdocs build --strict`; on `main`, publishing the site to GitHub Pages |
+
 ## The Fortran oracle and the golden files
 
 `oracle/` holds scripts that build SMSIM's programs from the SMSIM

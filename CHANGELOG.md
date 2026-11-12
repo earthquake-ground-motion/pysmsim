@@ -32,6 +32,15 @@
   They agree with the three SMSIM programs to the digits those print, once
   an SMSIM bug is patched in the oracle: the programs leave the rupture
   distance of the Stafford (2022) spreading and Q unset.
+- Continuous integration (GitHub Actions). `ci.yml` runs ruff and mypy,
+  the tests on Linux and macOS with Python 3.12 and 3.13, each with the
+  Numba kernels compiled and as plain Python, and the slow tests in a job
+  of their own, on every push to `main` and every pull request.
+  `docs.yml` builds the documentation in strict mode and publishes it to
+  GitHub Pages from `main`. Both install exactly the versions in `uv.lock`.
+- The pysmsim logo (`docs/assets/logo.png`), with a round version in the
+  README and on the documentation's home page, and an icon in the
+  documentation's navigation bar and as its favicon.
 - Documentation: a MkDocs site (`mkdocs.yml`, `docs/`) with the command
   line, the run-file format, a Python guide with notebook snippets for
   `fourier_spectrum`, `rv_motion` and `td_motion` on their own and in the

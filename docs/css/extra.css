@@ -2,3 +2,21 @@
 .bs-sidebar .nav > li > a {
   overflow-wrap: anywhere;
 }
+
+/* The logo next to the site name in the navigation bar */
+.navbar-brand .site-logo {
+  height: 1.8rem;
+  margin: -0.4rem 0.5rem -0.4rem 0;
+  vertical-align: middle;
+}
+
+/* The logo at the top of the home page */
+.col-md-9 img.home-logo {
+  display: block;
+  width: 16rem;
+  max-width: 60%;
+  margin: 0 auto 1.5rem;
+  padding: 0;
+  border: none;
+  background: none;
+}
