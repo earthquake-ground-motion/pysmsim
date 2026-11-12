@@ -11,6 +11,7 @@ files into a run file::
     pysmsim run run.toml -o results.h5
     pysmsim run run.toml -o results.col --fortran-compat
     pysmsim run run.toml --td -o results.h5
+    pysmsim run run.toml --td --workers 0 -o results.h5
     pysmsim run run.toml --td --td-series 10 -o results.h5
     pysmsim scenario run.toml -m 6 -r 20
     pysmsim scenario run.toml -m 6 --rjb 15 --td --series 1 -o m6_rjb15
@@ -53,6 +54,17 @@ from pysmsim.scenario import OutputFormat, ScenarioGrid
 from pysmsim.spectrum.distance import rjb_to_rrup_depth
 
 __all__ = ["main"]
+
+
+def _workers(text: str) -> int:
+    """Parse the number of processes of ``--workers``, an integer >= 0."""
+    try:
+        value = int(text)
+    except ValueError:
+        value = -1
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"expected an integer >= 0, got {text!r}")
+    return value
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -125,6 +137,17 @@ def _parser() -> argparse.ArgumentParser:
         "--fortran-compat",
         action="store_true",
         help="reproduce SMSIM's behaviour where pysmsim differs (see the documentation)",
+    )
+    run_cmd.add_argument(
+        "-w",
+        "--workers",
+        type=_workers,
+        default=1,
+        metavar="N",
+        help=(
+            "share the RV and TD scenarios among N processes (default 1; 0: one per CPU); "
+            "the results are the same, and it pays off for runs longer than a few seconds"
+        ),
     )
     run_cmd.add_argument("-q", "--quiet", action="store_true", help="print nothing but errors")
 
@@ -335,6 +358,7 @@ def _run(args: argparse.Namespace) -> int:
             rv=not args.no_rv,
             td=args.td,
             fortran_compat=args.fortran_compat,
+            workers=args.workers,
         )
         path.parent.mkdir(parents=True, exist_ok=True)
         write_results(result, path, fmt)

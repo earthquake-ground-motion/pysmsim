@@ -31,10 +31,13 @@ from pysmsim.spectrum.filters import LowCutFilter
 from pysmsim.td.acc_ts import acc_ts, fft_frequencies, target_spectrum
 from pysmsim.td.gm_td import MEASURES, Statistics, statistics, td_motion
 from pysmsim.td.intensity import (
+    SERIES_MEASURES,
     G,
     arias_intensity,
     cumulative_squared,
     integrate,
+    series_measures,
+    series_measures_numpy,
     significant_duration,
     velocity_displacement,
 )
@@ -201,6 +204,23 @@ def test_significant_duration() -> None:
     assert significant_duration(cum, dt, 0.05, 0.95) == pytest.approx(9.0)
     two = significant_duration(np.vstack([cum, cum**2]), dt, 0.05, 0.95)
     assert two.shape == (2,) and two[0] == pytest.approx(9.0)
+
+
+def test_series_measures_twins() -> None:
+    rng = np.random.default_rng(3)
+    acc = rng.standard_normal((2, 3, 500)) * np.hanning(500)
+    ours = series_measures(acc, 0.01)
+    theirs = series_measures_numpy(acc, 0.01)
+    assert list(ours) == list(SERIES_MEASURES) == list(MEASURES)
+    for name in SERIES_MEASURES:
+        assert ours[name].shape == (2, 3)
+        np.testing.assert_array_equal(ours[name], theirs[name])
+    one = series_measures(acc[1, 2], 0.01)
+    assert one["pga"].shape == () and one["arias"] == ours["arias"][1, 2]
+    vel, dis = velocity_displacement(acc[0, 0], 0.01)
+    assert ours["pgv"][0, 0] == np.abs(vel).max() and ours["pgd"][0, 0] == np.abs(dis).max()
+    with pytest.raises(ValueError, match="at least two points"):
+        series_measures(np.ones(1), 0.01)
 
 
 def test_oscillator_step_response() -> None:

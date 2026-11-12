@@ -27,12 +27,7 @@ import numpy.typing as npt
 from pysmsim.params import Params
 from pysmsim.spectrum.fas import ScenarioTerms, scenario_terms
 from pysmsim.td.acc_ts import acc_ts, target_spectrum
-from pysmsim.td.intensity import (
-    arias_intensity,
-    cumulative_squared,
-    significant_duration,
-    velocity_displacement,
-)
+from pysmsim.td.intensity import SERIES_MEASURES, series_measures
 from pysmsim.td.noise import white_noise
 from pysmsim.td.response import oscillator_displacement
 from pysmsim.td.window import TimeGrid, time_grid, window
@@ -41,7 +36,7 @@ __all__ = ["MEASURES", "Statistics", "TDResult", "statistics", "td_motion"]
 
 FloatArray = npt.NDArray[np.float64]
 
-MEASURES = ("pga", "pgv", "pgd", "arias", "dur_75_05", "dur_95_05")
+MEASURES = SERIES_MEASURES
 """The measures of every simulation besides the oscillator responses."""
 
 _CHUNK_POINTS = 1 << 21
@@ -223,14 +218,8 @@ def td_motion(
         count = rows.stop - first
         noise = white_noise(rng, (count, grid.nmotion), td.noise)
         acc = acc_ts(noise, grid, w, spectrum)
-        vel, dis = velocity_displacement(acc, dt)
-        a2 = cumulative_squared(acc, dt)
-        out["pga"][rows] = np.abs(acc).max(axis=-1)
-        out["pgv"][rows] = np.abs(vel).max(axis=-1)
-        out["pgd"][rows] = np.abs(dis).max(axis=-1)
-        out["arias"][rows] = arias_intensity(a2[:, -1])
-        out["dur_75_05"][rows] = significant_duration(a2, dt, 0.05, 0.75)
-        out["dur_95_05"][rows] = significant_duration(a2, dt, 0.05, 0.95)
+        for name, values in series_measures(acc, dt).items():
+            out[name][rows] = values
         if periods_arr.size:
             sd[rows] = oscillator_displacement(acc, periods_arr, damping, dt)
         if kept is not None:

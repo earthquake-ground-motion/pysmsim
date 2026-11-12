@@ -22,10 +22,12 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterator
+from dataclasses import dataclass, field
 from typing import Any
 
 import pandas as pd
 
+from pysmsim.drivers._parallel import map_tasks
 from pysmsim.drivers.loop_fas import params_for
 from pysmsim.drivers.loop_rv import psa_column
 from pysmsim.params import Params
@@ -172,11 +174,80 @@ def td_loop_series(
         )
 
 
+_Scenario = tuple[float | None, float | None, float, float, float, float]
+
+
+@dataclass
+class _TDState:
+    """What each task of :func:`td_loop_details` shares (sent once to each worker)."""
+
+    params: Params
+    grid: ScenarioGrid
+    fortran_compat: bool
+    runs: dict[tuple[float | None, float | None], Params] = field(default_factory=dict)
+
+
+def _td_rows(state: _TDState, task: _Scenario) -> list[dict[str, Any]]:
+    """Return the rows of :func:`td_loop_details` for one scenario."""
+    stress, kappa0, magnitude, rjb, h, rrup = task
+    grid = state.grid
+    run = state.runs.get((stress, kappa0))
+    if run is None:
+        run = params_for(
+            state.params, kappa0=kappa0, stress=stress, fortran_compat=state.fortran_compat
+        )
+        state.runs[(stress, kappa0)] = run
+    result = td_motion(run, magnitude, rrup, grid.periods, grid.damping)
+    terms = result.terms
+    stress_value = terms.source.stress
+    scenario = {
+        "magnitude": magnitude,
+        "rjb": rjb,
+        "h": h,
+        "rrup": rrup,
+        "f_ff": terms.finite_fault_h,
+        "rps": terms.rps,
+        "kappa0": run.site.kappa0,
+        "stress": math.nan if stress_value is None else stress_value,
+        "fa": terms.source.fa,
+        "fb": terms.source.fb,
+        "dur_source": result.dur_source,
+        "dur_path": result.dur_path,
+        "dur_ex": result.grid.dur_ex,
+        "te": result.grid.te,
+        "npts": result.grid.npts,
+        "nsims": result.nsims,
+    }
+
+    measures: list[tuple[str, float, Statistics]] = []
+    for measure in _MEASURES:
+        stats = result.statistics(measure)
+        assert isinstance(stats, Statistics)
+        measures.append((measure, math.nan, stats))
+    psa = result.statistics("psa")
+    assert isinstance(psa, list)
+    measures += [("psa", period, stats) for period, stats in zip(grid.periods, psa, strict=True)]
+    return [
+        {
+            "measure": measure,
+            "period": period,
+            "damping": grid.damping if measure == "psa" else math.nan,
+            **scenario,
+            "mean": stats.mean,
+            "std": stats.std,
+            "gmean": stats.gmean,
+            "gfactor": stats.gfactor,
+        }
+        for measure, period, stats in measures
+    ]
+
+
 def td_loop_details(
     params: Params,
     grid: ScenarioGrid,
     *,
     fortran_compat: bool = False,
+    workers: int | None = 1,
 ) -> pd.DataFrame:
     """Time-domain simulations of a grid: the statistics of every measure.
 
@@ -192,6 +263,12 @@ def td_loop_details(
         Make kappa independent of magnitude even when the grid does not
         give kappa_0, as SMSIM's loop drivers do (see
         :func:`~pysmsim.drivers.loop_fas.params_for`).
+    workers : int or None
+        Number of processes that share the scenarios: 1 (the default)
+        computes in this process, None or 0 uses one per CPU. The results
+        are the same whatever the number, since every scenario starts from
+        the same seed; starting the processes takes a second or two, so
+        more than one pays off only for grids that take longer than that.
 
     Returns
     -------
@@ -201,53 +278,9 @@ def td_loop_details(
         :data:`TD_DETAIL_COLUMNS`. The scenarios are in the order stress,
         kappa_0, magnitude, distance.
     """
-    rows: list[dict[str, Any]] = []
-    for run, magnitude, rjb, h, rrup in _runs(params, grid, fortran_compat):
-        result = td_motion(run, magnitude, rrup, grid.periods, grid.damping)
-        terms = result.terms
-        stress_value = terms.source.stress
-        scenario = {
-            "magnitude": magnitude,
-            "rjb": rjb,
-            "h": h,
-            "rrup": rrup,
-            "f_ff": terms.finite_fault_h,
-            "rps": terms.rps,
-            "kappa0": run.site.kappa0,
-            "stress": math.nan if stress_value is None else stress_value,
-            "fa": terms.source.fa,
-            "fb": terms.source.fb,
-            "dur_source": result.dur_source,
-            "dur_path": result.dur_path,
-            "dur_ex": result.grid.dur_ex,
-            "te": result.grid.te,
-            "npts": result.grid.npts,
-            "nsims": result.nsims,
-        }
-
-        measures: list[tuple[str, float, Statistics]] = []
-        for measure in _MEASURES:
-            stats = result.statistics(measure)
-            assert isinstance(stats, Statistics)
-            measures.append((measure, math.nan, stats))
-        psa = result.statistics("psa")
-        assert isinstance(psa, list)
-        measures += [
-            ("psa", period, stats) for period, stats in zip(grid.periods, psa, strict=True)
-        ]
-        rows += [
-            {
-                "measure": measure,
-                "period": period,
-                "damping": grid.damping if measure == "psa" else math.nan,
-                **scenario,
-                "mean": stats.mean,
-                "std": stats.std,
-                "gmean": stats.gmean,
-                "gfactor": stats.gfactor,
-            }
-            for measure, period, stats in measures
-        ]
+    state = _TDState(params, grid, fortran_compat)
+    blocks = map_tasks(_td_rows, state, list(_scenarios(grid)), workers)
+    rows = [row for block in blocks for row in block]
     return pd.DataFrame(rows, columns=list(TD_DETAIL_COLUMNS))
 
 
@@ -291,6 +324,7 @@ def td_loop(
     grid: ScenarioGrid,
     *,
     fortran_compat: bool = False,
+    workers: int | None = 1,
 ) -> pd.DataFrame:
     """Time-domain peak motions, one row per scenario of a grid.
 
@@ -301,4 +335,6 @@ def td_loop(
     pandas.DataFrame
         The table of :func:`td_table`: arithmetic means of the simulations.
     """
-    return td_table(td_loop_details(params, grid, fortran_compat=fortran_compat), grid)
+    return td_table(
+        td_loop_details(params, grid, fortran_compat=fortran_compat, workers=workers), grid
+    )

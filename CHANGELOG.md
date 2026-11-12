@@ -32,6 +32,18 @@
   They agree with the three SMSIM programs to the digits those print, once
   an SMSIM bug is patched in the oracle: the programs leave the rupture
   distance of the Stafford (2022) spreading and Q unset.
+- Speed. The time-domain measures of each series (PGA, PGV, PGD, Arias
+  intensity and the durations) come from one compiled pass
+  (`pysmsim.td.intensity.series_measures`), and the oscillator kernel
+  shares its work over simulations and periods together, which halves the
+  time of a TD run with few periods. `workers=N` on `rv_loop`,
+  `rv_loop_details`, `td_loop`, `td_loop_details` and `run`, and
+  `pysmsim run --workers N` (0: one per CPU), share the scenarios among N
+  processes; the results are identical to one process. It pays off for
+  the RV method on large grids (3.4 times faster with 4 processes on 4
+  cores for 340 scenarios and 200 periods); the TD method already uses
+  every core through Numba's threads. `examples/benchmark.py` times the
+  FAS, RV and TD loops of a run file.
 
 Given SMSIM's own white noise, a pysmsim time series agrees with the
 double-precision Fortran build to about 1e-10 of its peak, for the

@@ -22,14 +22,16 @@ period, magnitude, distance). The drivers only compose
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from pysmsim.drivers._parallel import map_tasks
 from pysmsim.drivers.loop_fas import params_for
 from pysmsim.params import Params
-from pysmsim.rv.duration import oscillator_correction
+from pysmsim.rv.duration import OscillatorCorrection, oscillator_correction
 from pysmsim.rv.gm_rv import rv_motion
 from pysmsim.scenario import DistanceMetric, ScenarioGrid
 from pysmsim.spectrum.distance import rjb_to_rrup_depth
@@ -167,11 +169,112 @@ def rv_table(details: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(pd.concat([table, motions.reset_index(drop=True)], axis=1))
 
 
+@dataclass
+class _RVState:
+    """What every task of :func:`rv_loop_details` shares (sent once to each worker)."""
+
+    params: Params
+    grid: ScenarioGrid
+    fortran_compat: bool
+    runs: dict[tuple[float | None, float | None], Params] = field(default_factory=dict)
+    correction: OscillatorCorrection | None = None
+
+
+def _rv_rows(
+    state: _RVState, task: tuple[float | None, float | None, int, float]
+) -> list[dict[str, Any]]:
+    """Return the rows of one stress, kappa_0, measure and magnitude, over the distances."""
+    stress, kappa0, index, magnitude = task
+    grid = state.grid
+    fortran_compat = state.fortran_compat
+    run = state.runs.get((stress, kappa0))
+    if run is None:
+        run = params_for(state.params, kappa0=kappa0, stress=stress, fortran_compat=fortran_compat)
+        state.runs[(stress, kappa0)] = run
+    if state.correction is None:
+        state.correction = oscillator_correction(state.params.rv)
+    correction = state.correction
+    measure, response = _responses(grid)[index]
+    rows: list[dict[str, Any]] = []
+    by_rjb = grid.distance_metric is DistanceMetric.RJB
+    h = (
+        rjb_to_rrup_depth(
+            magnitude,
+            conversion=grid.rjb_to_rrup,
+            mechanism=grid.mechanism,
+            depth_function=grid.depth_function,
+        )
+        if by_rjb
+        else math.nan
+    )
+    for distance in grid.distances:
+        rjb = distance if by_rjb else math.nan
+        rrup = math.sqrt(rjb**2 + h**2) if by_rjb else distance
+        result = rv_motion(
+            run,
+            magnitude,
+            rrup,
+            response,
+            correction=correction,
+            fortran_compat=fortran_compat,
+        )
+        terms = result.terms
+        stress_value = terms.source.stress
+        row: dict[str, Any] = {
+            "measure": measure,
+            "period": math.nan,
+            "damping": math.nan,
+            "magnitude": magnitude,
+            "rjb": rjb,
+            "h": h,
+            "rrup": rrup,
+            "f_ff": terms.finite_fault_h,
+            "rps": terms.rps,
+            "kappa0": run.site.kappa0,
+            "stress": math.nan if stress_value is None else stress_value,
+            "fa": terms.source.fa,
+            "fb": terms.source.fb,
+            "fup": result.fup,
+            "dur_source": result.dur_source,
+            "dur_path": result.dur_path,
+            "dur_ex": result.dur_ex,
+            "dur_rms": result.dur_rms,
+            "m0": result.moments.m0,
+            "m1": result.moments.m1,
+            "m2": result.moments.m2,
+            "m4": result.moments.m4,
+            "bandwidth": result.moments.bandwidth,
+            "n_zero_crossings": result.n_zero_crossings,
+            "n_extrema": result.n_extrema,
+            "rms": result.rms,
+            "peak_factor": result.peak_factor,
+            "peak_factor_steps": (
+                math.nan if result.peak_factor_steps is None else float(result.peak_factor_steps)
+            ),
+            "peak_factor_cl": result.peak_factor_cl,
+            "peak_motion_factor": result.peak_motion_factor,
+        }
+        peak = result.peak
+        if isinstance(response, Oscillator):
+            row["period"] = response.period
+            row["damping"] = response.damping
+            row["psv"] = peak
+            row["psa"] = 2.0 * math.pi / response.period * peak
+            row["sd"] = response.period / (2.0 * math.pi) * peak
+        elif measure == "pgv":
+            row["pgv"] = peak
+        else:
+            row["pga"] = peak
+        rows.append(row)
+    return rows
+
+
 def rv_loop(
     params: Params,
     grid: ScenarioGrid,
     *,
     fortran_compat: bool = False,
+    workers: int | None = 1,
 ) -> pd.DataFrame:
     """Random-vibration peak motions, one row per scenario of a grid.
 
@@ -183,7 +286,7 @@ def rv_loop(
         The table of :func:`rv_table`: the scenario, then ``pgv`` (cm/s),
         ``pga`` (cm/s^2) and ``psa(T)`` (cm/s^2) for each period.
     """
-    return rv_table(rv_loop_details(params, grid, fortran_compat=fortran_compat))
+    return rv_table(rv_loop_details(params, grid, fortran_compat=fortran_compat, workers=workers))
 
 
 def rv_loop_details(
@@ -191,6 +294,7 @@ def rv_loop_details(
     grid: ScenarioGrid,
     *,
     fortran_compat: bool = False,
+    workers: int | None = 1,
 ) -> pd.DataFrame:
     """Random-vibration peak motions and intermediate quantities for a grid.
 
@@ -207,6 +311,11 @@ def rv_loop_details(
         give kappa_0 (see :func:`~pysmsim.drivers.loop_fas.params_for`),
         compute fup from kappa_0, and compute the DK80 peak factor with
         SMSIM's sum (see :func:`~pysmsim.rv.gm_rv.rv_motion`).
+    workers : int or None
+        Number of processes to share the scenarios: 1 (the default)
+        computes them in this process, None or 0 uses one per CPU. The
+        results are the same; starting the processes takes a second or two,
+        so more than one pays off only for large grids.
 
     Returns
     -------
@@ -214,85 +323,15 @@ def rv_loop_details(
         One row per scenario and measure, with the columns
         :data:`RV_DETAIL_COLUMNS`.
     """
-    correction = oscillator_correction(params.rv)
-    rows: list[dict[str, Any]] = []
-    for stress in grid.stress or (None,):
-        for kappa0 in grid.kappa0 or (None,):
-            run = params_for(params, kappa0=kappa0, stress=stress, fortran_compat=fortran_compat)
-            for measure, response in _responses(grid):
-                for magnitude in grid.magnitudes:
-                    by_rjb = grid.distance_metric is DistanceMetric.RJB
-                    h = (
-                        rjb_to_rrup_depth(
-                            magnitude,
-                            conversion=grid.rjb_to_rrup,
-                            mechanism=grid.mechanism,
-                            depth_function=grid.depth_function,
-                        )
-                        if by_rjb
-                        else math.nan
-                    )
-                    for distance in grid.distances:
-                        rjb = distance if by_rjb else math.nan
-                        rrup = math.sqrt(rjb**2 + h**2) if by_rjb else distance
-                        result = rv_motion(
-                            run,
-                            magnitude,
-                            rrup,
-                            response,
-                            correction=correction,
-                            fortran_compat=fortran_compat,
-                        )
-                        terms = result.terms
-                        stress_value = terms.source.stress
-                        row: dict[str, Any] = {
-                            "measure": measure,
-                            "period": math.nan,
-                            "damping": math.nan,
-                            "magnitude": magnitude,
-                            "rjb": rjb,
-                            "h": h,
-                            "rrup": rrup,
-                            "f_ff": terms.finite_fault_h,
-                            "rps": terms.rps,
-                            "kappa0": run.site.kappa0,
-                            "stress": math.nan if stress_value is None else stress_value,
-                            "fa": terms.source.fa,
-                            "fb": terms.source.fb,
-                            "fup": result.fup,
-                            "dur_source": result.dur_source,
-                            "dur_path": result.dur_path,
-                            "dur_ex": result.dur_ex,
-                            "dur_rms": result.dur_rms,
-                            "m0": result.moments.m0,
-                            "m1": result.moments.m1,
-                            "m2": result.moments.m2,
-                            "m4": result.moments.m4,
-                            "bandwidth": result.moments.bandwidth,
-                            "n_zero_crossings": result.n_zero_crossings,
-                            "n_extrema": result.n_extrema,
-                            "rms": result.rms,
-                            "peak_factor": result.peak_factor,
-                            "peak_factor_steps": (
-                                math.nan
-                                if result.peak_factor_steps is None
-                                else float(result.peak_factor_steps)
-                            ),
-                            "peak_factor_cl": result.peak_factor_cl,
-                            "peak_motion_factor": result.peak_motion_factor,
-                        }
-                        peak = result.peak
-                        if isinstance(response, Oscillator):
-                            row["period"] = response.period
-                            row["damping"] = response.damping
-                            row["psv"] = peak
-                            row["psa"] = 2.0 * math.pi / response.period * peak
-                            row["sd"] = response.period / (2.0 * math.pi) * peak
-                        elif measure == "pgv":
-                            row["pgv"] = peak
-                        else:
-                            row["pga"] = peak
-                        rows.append(row)
+    state = _RVState(params=params, grid=grid, fortran_compat=fortran_compat)
+    tasks = [
+        (stress, kappa0, index, magnitude)
+        for stress in grid.stress or (None,)
+        for kappa0 in grid.kappa0 or (None,)
+        for index in range(len(_responses(grid)))
+        for magnitude in grid.magnitudes
+    ]
+    rows = [row for block in map_tasks(_rv_rows, state, tasks, workers) for row in block]
     table = pd.DataFrame(rows).reindex(columns=list(RV_DETAIL_COLUMNS))
     numeric = [c for c in RV_DETAIL_COLUMNS if c != "measure"]
     table[numeric] = table[numeric].astype(np.float64)
