@@ -1,0 +1,81 @@
+site_name: pysmsim
+site_description: Stochastic ground-motion simulations (SMSIM) in Python
+repo_url: https://github.com/earthquake-ground-motion/pysmsim
+repo_name: GitHub
+edit_uri: ""
+copyright: GNU General Public License v3.0
+strict: true
+
+theme:
+  name: mkdocs
+  color_mode: dark
+  user_color_mode_toggle: true
+  navigation_depth: 3
+
+extra_css:
+  - css/extra.css
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Command line: cli.md
+  - Run files: run-files.md
+  - Python guide:
+      - Overview: guide/index.md
+      - Model parameters: guide/parameters.md
+      - Fourier spectra: guide/fourier.md
+      - Random vibration: guide/rv.md
+      - Time domain: guide/td.md
+      - Runs and result files: guide/runs.md
+      - Speed: guide/speed.md
+  - Comparison with SMSIM: smsim.md
+  - Development: development.md
+  - API reference:
+      - Overview: reference/index.md
+      - Parameters and scenarios: reference/params.md
+      - Fourier spectrum: reference/spectrum.md
+      - Random vibration: reference/rv.md
+      - Time domain: reference/td.md
+      - Drivers: reference/drivers.md
+      - Input and output: reference/io.md
+  - Changelog: changelog.md
+
+plugins:
+  - search
+  - autorefs
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            extensions:
+              - docs/_scripts/griffe_rst.py
+            docstring_style: numpy
+            docstring_section_style: table
+            members_order: source
+            filters: ["!^_"]
+            show_source: false
+            show_root_heading: true
+            show_root_full_path: true
+            show_signature_annotations: true
+            separate_signature: true
+            signature_crossrefs: true
+            merge_init_into_class: true
+            heading_level: 2
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      use_pygments: false      # the theme's highlight.js colours the code
+  - pymdownx.superfences
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
+
+exclude_docs: |
+  _scripts/

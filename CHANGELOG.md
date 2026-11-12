@@ -32,6 +32,13 @@
   They agree with the three SMSIM programs to the digits those print, once
   an SMSIM bug is patched in the oracle: the programs leave the rupture
   distance of the Stafford (2022) spreading and Q unset.
+- Documentation: a MkDocs site (`mkdocs.yml`, `docs/`) with the command
+  line, the run-file format, a Python guide with notebook snippets for
+  `fourier_spectrum`, `rv_motion` and `td_motion` on their own and in the
+  loops, the comparison with SMSIM (including why RV results can differ
+  from SMSIM's by a few parts in 10,000) and an API reference generated
+  from the docstrings. The `docs` extra installs MkDocs and mkdocstrings,
+  and `tests/docs` runs every Python snippet of the guide.
 - Speed. The time-domain measures of each series (PGA, PGV, PGD, Arias
   intensity and the durations) come from one compiled pass
   (`pysmsim.td.intensity.series_measures`), and the oscillator kernel
