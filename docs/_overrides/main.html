@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{#- The logo next to the site name in the navigation bar #}
+{%- block site_name %}
+<a class="navbar-brand" href="{{ nav.homepage.url|url }}"><img class="site-logo" src="{{ 'assets/icon.png'|url }}" alt="">{{ config.site_name }}</a>
+{%- endblock %}
+
+{%- block extrahead %}
+<link rel="apple-touch-icon" href="{{ 'img/apple-touch-icon.png'|url }}">
+{%- endblock %}

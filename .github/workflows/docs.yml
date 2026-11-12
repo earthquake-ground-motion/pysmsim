@@ -1,0 +1,60 @@
+# Build the documentation site on every pull request and push to main, and
+# publish it to GitHub Pages from main.
+#
+# The build runs in strict mode, so a broken link or reference fails it.
+# Publishing needs the repository's Settings > Pages > Source set to
+# "GitHub Actions" (once); the site is then at
+# https://earthquake-ground-motion.github.io/pysmsim/.
+
+name: Docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build the site
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - run: uv sync --locked --extra docs
+      - run: uv run --no-sync mkdocs build --strict --site-dir site
+      - uses: actions/upload-pages-artifact@v5
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        with:
+          path: site
+
+  deploy:
+    name: Publish to GitHub Pages
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    # One deployment at a time, and never cancel one half-way
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

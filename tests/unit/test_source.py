@@ -74,7 +74,11 @@ def test_compiled_kernel_matches_numpy_twin(source: SourceSpectrum) -> None:
 
 @pytest.mark.parametrize("source", EXAMPLES, ids=IDS)
 def test_models_are_frozen(source: SourceSpectrum) -> None:
-    with pytest.raises((FrozenInstanceError, AttributeError)):
+    # Python 3.12 raises TypeError rather than FrozenInstanceError for a new
+    # attribute of a frozen dataclass with slots that derives from another
+    # (its __setattr__ calls super() on the class before slots were added;
+    # 3.13 fixed this). Every version refuses the change.
+    with pytest.raises((FrozenInstanceError, AttributeError, TypeError)):
         source.extra = 1.0  # type: ignore[attr-defined]
 
 

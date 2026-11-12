@@ -1,5 +1,7 @@
 # pysmsim
 
+![pysmsim logo](assets/logo-circle.png){ .home-logo }
+
 pysmsim is a Python port of David Boore's Fortran SMSIM programs (version
 2023-03-03) for the stochastic simulation of earthquake ground motion
 (Boore, 2003). From a model of the Fourier amplitude spectrum (source, path
