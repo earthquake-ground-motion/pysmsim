@@ -55,6 +55,12 @@ The output format follows the suffix given with `-o`, or `--format`:
 | `hdf5` | The scenario, FAS, RV and TD tables in one file, with the arithmetic and geometric means and spreads of the TD simulations and the run file stored in it |
 | `col` | SMSIM's `.col` layout of the RV results, one row per scenario and measure, for comparison with the Fortran |
 
+`--workers N` shares the scenarios among N processes (0: one per CPU)
+and gives the same results as one. Starting the processes takes a second
+or two, so it pays off for the RV method on large grids; the TD method
+already uses every core. `python examples/benchmark.py` times the loops of
+a run file.
+
 `--fortran-compat` reproduces SMSIM's behaviour where pysmsim deliberately
 differs from it (see `CLAUDE.md`). `pysmsim --help` and
 `pysmsim run --help` list every option.

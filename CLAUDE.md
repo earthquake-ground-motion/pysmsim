@@ -213,8 +213,8 @@ src/pysmsim/
              site.py, filters.py, response.py, distance.py, fas.py
   rv/        moments.py, peak_factors.py, duration.py, gm_rv.py
   td/        noise.py, window.py, acc_ts.py, response.py, intensity.py, gm_td.py
-  drivers/   loop_rv.py, loop_td.py, loop_fas.py
-  cli.py     pysmsim run | convert | check
+  drivers/   loop_rv.py, loop_td.py, loop_fas.py, run.py, single.py, _parallel.py
+  cli.py     pysmsim run | scenario | convert | check
 tests/unit, tests/golden
 oracle/      scripts that build and run the Fortran (no source edits)
 ```
@@ -290,9 +290,10 @@ physics.
     (`rv_motion`, one scenario);
   - `td/`: `window.py` (`time_grid`, the box and exponential windows),
     `noise.py`, `acc_ts.py` (one series, batched over simulations),
-    `intensity.py` (velocity, displacement, Arias, durations),
-    `response.py` (Nigam-Jennings oscillator, a Numba kernel with a NumPy
-    twin) and `gm_td.py` (`td_motion`: nsims simulations of one scenario,
+    `intensity.py` (velocity, displacement, Arias, durations, and
+    `series_measures`, all of them in one Numba pass, bitwise equal to the
+    NumPy functions), `response.py` (Nigam-Jennings oscillator, a Numba
+    kernel with a NumPy twin, parallel over series and periods together) and `gm_td.py` (`td_motion`: nsims simulations of one scenario,
     and their statistics). The noise comes from `numpy.random.default_rng`
     seeded with `[td] seed` at every scenario, as SMSIM reseeds; SMSIM's
     `ran1`/`gasdev` are not reproduced (only the noise-injection test needs
@@ -315,6 +316,10 @@ physics.
     `rrup`, which the Stafford spreading and `fr1 = -1` Q use; the oracle
     patches that bug (`*.rrup.patch`) and pysmsim does not reproduce it,
     even with `fortran_compat`;
+    `_parallel.py` (`map_tasks`) runs the RV and TD loops' tasks (blocks
+    of scenarios) in `workers` spawned processes; each task is computed as
+    in one process, and TD reseeds at every scenario, so the tables are
+    identical whatever `workers` is;
   - `io/`: `config.py` (TOML; `params_table` gives the parameter
     sections as a dict), `bt15_tables.py`, `hdf5.py` (`write_hdf5`
     and `read_hdf5`; a group per table, one dataset per column, FAS and PSA
@@ -366,7 +371,8 @@ physics.
     `response_dump`, `td_dump`);
   - `build/`: build output, which Git ignores.
 - `notebooks/`: exploration notebooks.
-- `examples/`: example run TOML files.
+- `examples/`: example run TOML files and scripts; `benchmark.py` times
+  the FAS, RV and TD loops (and checks that `--workers` changes nothing).
 - `docs/`: documentation.
 - `papers/`: the reference papers, which Git ignores.
 

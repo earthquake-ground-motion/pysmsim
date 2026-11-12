@@ -59,19 +59,22 @@ def _peak_displacement(
     nseries, npts = acc.shape
     nper = omegas.shape[0]
     out = np.zeros((nseries, nper))
-    for k in range(nper):
+    # One job per series and period, so that all threads are busy even for
+    # a few series
+    for job in numba.prange(nseries * nper):
+        s = job // nper
+        k = job % nper
         a11, a12, a21, a22, b11, b12, b21, b22 = _coefficients_jit(omegas[k], damping, dt)
-        for s in numba.prange(nseries):
-            y = 0.0
-            ydot = 0.0
-            peak = 0.0
-            for i in range(npts - 1):
-                y1 = a11 * y + a12 * ydot + b11 * acc[s, i] + b12 * acc[s, i + 1]
-                ydot = a21 * y + a22 * ydot + b21 * acc[s, i] + b22 * acc[s, i + 1]
-                y = y1
-                if abs(y) > peak:
-                    peak = abs(y)
-            out[s, k] = peak
+        y = 0.0
+        ydot = 0.0
+        peak = 0.0
+        for i in range(npts - 1):
+            y1 = a11 * y + a12 * ydot + b11 * acc[s, i] + b12 * acc[s, i + 1]
+            ydot = a21 * y + a22 * ydot + b21 * acc[s, i] + b22 * acc[s, i + 1]
+            y = y1
+            if abs(y) > peak:
+                peak = abs(y)
+        out[s, k] = peak
     return out
 
 

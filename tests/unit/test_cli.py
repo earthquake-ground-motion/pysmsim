@@ -194,7 +194,18 @@ def test_run_options(config_file: Path, tmp_path: Path, capsys: pytest.CaptureFi
     out = tmp_path / "compat.h5"
     assert main(["run", str(config_file), "-o", str(out), "--fortran-compat", "-q"]) == 0
     assert read_hdf5(out).fortran_compat
+    out = tmp_path / "workers.h5"
+    assert main(["run", str(config_file), "-o", str(out), "--workers", "2", "-q"]) == 0
+    serial = tmp_path / "serial.h5"
+    assert main(["run", str(config_file), "-o", str(serial), "-q"]) == 0
+    assert read_hdf5(out).rv is not None
+    pd.testing.assert_frame_equal(read_hdf5(out).rv, read_hdf5(serial).rv, check_exact=True)
     assert capsys.readouterr().err == ""
+    for bad in ("-1", "two"):
+        with pytest.raises(SystemExit) as exit_info:
+            main(["run", str(config_file), "--workers", bad])
+        assert exit_info.value.code == 2
+        assert "expected an integer >= 0" in capsys.readouterr().err
     assert main(["run", str(config_file), "-o", str(tmp_path / "x.col"), "--no-rv"]) == 1
     assert "cannot be used with --no-rv" in capsys.readouterr().err
 

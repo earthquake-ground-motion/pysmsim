@@ -127,6 +127,7 @@ def run(
     rv: bool = True,
     td: bool = False,
     fortran_compat: bool = False,
+    workers: int | None = 1,
 ) -> RunResult:
     """Compute the FAS and the peak motions of a grid.
 
@@ -152,6 +153,10 @@ def run(
         give kappa_0, compute fup from kappa_0, and compute the DK80 peak
         factor with SMSIM's sum (see
         :func:`~pysmsim.drivers.loop_rv.rv_loop_details`).
+    workers : int or None
+        Number of processes for the RV and TD loops: 1 (the default)
+        computes in this process, None or 0 uses one per CPU. The results do
+        not depend on it.
 
     Returns
     -------
@@ -220,14 +225,14 @@ def run(
 
     rv_table = None
     if rv:
-        wide = rv_loop(params, grid, fortran_compat=fortran_compat)
+        wide = rv_loop(params, grid, fortran_compat=fortran_compat, workers=workers)
         motions = ["pgv"] * grid.pgv + ["pga"] * grid.pga + [psa_column(t) for t in grid.periods]
         rv_table = wide[[*RV_COLUMNS, *motions]].reset_index(drop=True)
 
     td_wide: pd.DataFrame | None = None
     td_details: pd.DataFrame | None = None
     if td:
-        td_details = td_loop_details(params, grid, fortran_compat=fortran_compat)
+        td_details = td_loop_details(params, grid, fortran_compat=fortran_compat, workers=workers)
         wide = td_table(td_details, grid)
         motions = [c for c in wide.columns if c not in TD_SCENARIO_COLUMNS]
         td_wide = wide[[*TD_COLUMNS, *motions]].reset_index(drop=True)
