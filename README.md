@@ -10,6 +10,18 @@ simulations, as `tmrsk_loop_td_drvr` does, together with Fourier amplitude
 spectra. The TD simulations also give peak displacement, Arias intensity
 and significant durations.
 
+## Documentation
+
+The documentation is a MkDocs site built from `docs/`: installation, the
+command line, the run-file format, a Python guide with snippets for running
+each step (`fourier_spectrum`, `rv_motion`, `td_motion` and the loops) in a
+notebook, the comparison with SMSIM and the API reference. To read it:
+
+```bash
+uv sync --extra docs
+uv run mkdocs serve        # then open http://127.0.0.1:8000
+```
+
 ## Installation
 
 ```bash

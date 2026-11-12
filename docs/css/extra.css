@@ -1,0 +1,4 @@
+/* Long function names in the side bar wrap instead of running out of it */
+.bs-sidebar .nav > li > a {
+  overflow-wrap: anywhere;
+}
