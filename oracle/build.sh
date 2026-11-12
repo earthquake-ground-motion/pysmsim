@@ -37,7 +37,7 @@ FFLAGS=${FFLAGS:--O2}
 # SMSIM programs built for the golden tests
 PROGRAMS="tmrsk_loop_rv_drvr fmrsk_loop_fas_drvr tmrsk_loop_td_drvr"
 # Test-only programs from oracle/programs/
-TEST_PROGRAMS="factor_dump response_dump"
+TEST_PROGRAMS="factor_dump response_dump td_dump"
 
 if [ ! -d "$SMSIM_DIR/source_code" ]; then
     echo "error: $SMSIM_DIR/source_code not found" >&2

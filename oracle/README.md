@@ -21,8 +21,8 @@ oracle/make_golden.sh /path/to/smsim.2023-03-03_version double
 ```
 
 `build.sh` compiles `tmrsk_loop_rv_drvr`, `fmrsk_loop_fas_drvr`,
-`tmrsk_loop_td_drvr` and the test-only `factor_dump` and `response_dump`
-(see below) twice:
+`tmrsk_loop_td_drvr` and the test-only `factor_dump`, `response_dump` and
+`td_dump` (see below) twice:
 
 - `oracle/build/bin/single/`: the code as written, which is mostly single
   precision;
@@ -70,6 +70,17 @@ seismometers.
 oracle/build/bin/double/response_dump PARAMS M RRUP OUTFILE NFREQ FMIN FMAX DAMP T1 [T2 ...]
 ```
 
+`programs/td_dump.for`, also test-only, simulates one time series as
+`tmrsk_loop_td_drvr` does (the same time grid, window, noise and seed) and
+writes the white noise with the acceleration, so that pysmsim can be fed the
+same noise, then the peak motions, the integral of the squared acceleration,
+the indices of the significant durations and the oscillator displacements
+at 0.01, 0.1, 0.2, 1 and 2 s (5% damping).
+
+```bash
+oracle/build/bin/double/td_dump PARAMS M RRUP OUTFILE
+```
+
 `dump_factors.sh` runs `factor_dump` for every shipped `.params` file at
 M 4, 6 and 8 and Rrup 5, 20 and 100 km (override with `MAGS` and `RRUPS`),
 writing 54 files to `oracle/build/factors/<build>/`. It fails if `product`
@@ -99,7 +110,8 @@ amplification, kappa, fmax and the low-cut and high-cut filters, and
 synthetic RV cases in `inputs/rv_cases.txt`, which cover the oscillator
 corrections, dampings and fup settings the shipped files do not use, and
 copies the shipped example `.col` file with the same run from this build
-(`run_example.sh`). It also
+(`run_example.sh`). It runs `td_dump` for the synthetic window and timing
+cases in `inputs/td_cases.txt` and for `ofr.params`. It also
 saves the site and filter lines of each shipped `.params` file, so that the
 tests can rebuild those settings without the distribution. The
 double build takes about 7 minutes with gfortran 13.3, almost all of it in

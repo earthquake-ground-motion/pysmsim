@@ -1,0 +1,17 @@
+# Synthetic time-domain cases for the golden files (oracle/make_golden.sh).
+#
+# Each case is ofr.params from the SMSIM distribution with three value
+# lines replaced: the low-cut filter (fcut, nslope), the window (indxwind,
+# taper, eps_w, eta_w, f_tb2te, f_te_xtnd) and the timing (dur_fctr, dt,
+# tshift, seed, nsims, iran_type). td_dump writes the noise and the
+# acceleration of one simulation of each, which the tests feed to pysmsim.
+# A coarser dt and a short tshift keep the files small.
+#
+# Columns, separated by "|":
+#   name | low-cut line | window line | timing line
+td_exp_gauss       | 0.0 8 | 1 0.05 0.2 0.05 2.0 1.0  | 1.3 0.01 10.0 123.0 800 0
+td_exp_uniform     | 0.0 8 | 1 0.05 0.2 0.05 2.0 1.0  | 1.3 0.01 10.0 987.0 800 1
+td_exp_extended    | 0.0 8 | 1 0.05 0.3 0.1 2.12 1.5  | 1.5 0.01 10.0 123.0 800 0
+td_box_taper       | 0.0 8 | 0 0.05 0.2 0.05 2.0 1.0  | 1.3 0.01 10.0 123.0 800 0
+td_box_no_taper    | 0.0 8 | 0 0.0 0.2 0.05 2.0 1.0   | 1.3 0.01 10.0 123.0 800 1
+td_lowcut_pad      | 0.2 8 | 1 0.05 0.2 0.05 2.0 1.0  | 1.3 0.01 10.0 123.0 800 0

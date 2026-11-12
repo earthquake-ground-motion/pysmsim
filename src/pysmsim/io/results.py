@@ -7,12 +7,14 @@ one of the :class:`~pysmsim.scenario.OutputFormat` formats::
     write_results(result, "results.parquet", "parquet")
 
 - ``csv`` and ``parquet``: one table, one row per scenario
-  (:func:`results_table`): the scenario columns, then the RV columns, then
-  ``fas(f)``.
-- ``hdf5``: the three tables in one file (:func:`pysmsim.io.hdf5.write_hdf5`).
+  (:func:`results_table`): the scenario columns, then the RV columns, the
+  time-domain columns with the prefix ``td_`` (``td_pga``,
+  ``td_psa(1)``...), then ``fas(f)``.
+- ``hdf5``: all the tables in one file (:func:`pysmsim.io.hdf5.write_hdf5`),
+  with the spreads of the time-domain simulations.
 - ``col``: the layout of SMSIM's ``tmrsk_loop_rv_drvr`` ``.col`` file, one
   row per scenario and measure (:func:`write_col`), for comparison with
-  the Fortran.
+  the Fortran; RV results only.
 """
 
 from __future__ import annotations
@@ -77,11 +79,13 @@ def format_for_path(path: str | Path) -> OutputFormat | None:
 def results_table(result: RunResult) -> pd.DataFrame:
     """One table of a run: one row per scenario.
 
-    The columns of ``result.scenarios``, then those of ``result.rv`` and
-    ``result.fas`` (when the run computed them).
+    The columns of ``result.scenarios``, then those of ``result.rv``,
+    ``result.td`` (with the prefix ``td_``) and ``result.fas`` (when the run
+    computed them).
     """
     table = result.scenarios
-    for part in (result.rv, result.fas):
+    td = None if result.td is None else result.td.add_prefix("td_")
+    for part in (result.rv, td, result.fas):
         if part is not None:
             table = table.join(part)
     return table

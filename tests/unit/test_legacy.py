@@ -15,12 +15,18 @@ import pytest
 from pysmsim.cli import main
 from pysmsim.io.config import load_config, parse_config
 from pysmsim.io.legacy import (
+    RV_PROGRAM,
+    TD_PROGRAM,
     LegacyFormatError,
+    LoopControl,
+    RVLoopControl,
     _format_toml,
     _FortranReader,
     convert,
+    read_loop_ctl,
     read_params,
     read_rv_loop_ctl,
+    read_td_loop_ctl,
 )
 from pysmsim.params import TDConfig
 from pysmsim.spectrum.attenuation import Stafford2022Q
@@ -30,6 +36,7 @@ from pysmsim.spectrum.stress import HoerlStress
 SMSIM_FILES = Path(__file__).parents[1] / "data" / "smsim"
 OFR = (SMSIM_FILES / "ofr.params").read_text().replace("\r\n", "\n")
 CTL = (SMSIM_FILES / "tmrsk_loop_rv_drvr.ctl").read_text().replace("\r\n", "\n")
+TD_CTL = (SMSIM_FILES / "tmrsk_loop_td_drvr.ctl").read_text().replace("\r\n", "\n")
 _COMMENT = re.compile(r"^ *!")
 
 
@@ -54,6 +61,11 @@ def write(tmp_path: Path, text: str, name: str = "x.params") -> Path:
 def ctl_with(old: str, new: str) -> str:
     assert old in CTL
     return CTL.replace(old, new, 1)
+
+
+def td_ctl_with(old: str, new: str) -> str:
+    assert old in TD_CTL
+    return TD_CTL.replace(old, new, 1)
 
 
 # --- Fortran list-directed input ----------------------------------------------------
@@ -221,6 +233,62 @@ def test_ctl_log_spaced_single_value(tmp_path: Path) -> None:
     assert control.scenarios["distances"] == [30.0]
 
 
+def test_read_td_ctl() -> None:
+    control = read_loop_ctl(SMSIM_FILES / "tmrsk_loop_td_drvr.ctl")
+    assert control.program == TD_PROGRAM
+    assert control.col_file == "tmrsk_loop_td_drvr.col"
+    s = control.scenarios
+    assert s["periods"] == [0.01, 0.1, 0.2, 1.0, 2.0]
+    assert s["pga"] and s["pgv"]  # always computed by the TD driver
+    assert s["magnitudes"] == {"start": 4.0, "stop": 8.0, "step": 1.0}
+    assert s["kappa0"] == {"start": 0.0025, "stop": 0.16, "count": 7}
+    assert s["distances"] == [10.0, 40.0, 80.0]
+    assert s["stress"] == {"start": 1.0, "stop": 1000.0, "count": 4}
+    assert s["rjb_to_rrup"] == "cy14_ztor" and s["mechanism"] == "strike_slip"
+    assert control.notes == []
+    assert read_td_loop_ctl(SMSIM_FILES / "tmrsk_loop_td_drvr.ctl") == control
+    rv = read_loop_ctl(SMSIM_FILES / "tmrsk_loop_rv_drvr.ctl")
+    assert rv.program == RV_PROGRAM and rv == read_rv_loop_ctl(
+        SMSIM_FILES / "tmrsk_loop_rv_drvr.ctl"
+    )
+    assert RVLoopControl is LoopControl
+
+
+def test_td_ctl_variants(tmp_path: Path) -> None:
+    # Without the program in the heading, read_td_loop_ctl still reads it
+    text = TD_CTL.replace("tmrsk_loop_td_drvr\n", "a TD loop\n", 1)
+    path = write(tmp_path, text, "x.ctl")
+    assert (
+        read_td_loop_ctl(path).scenarios
+        == read_loop_ctl(SMSIM_FILES / "tmrsk_loop_td_drvr.ctl").scenarios
+    )
+    with pytest.raises(LegacyFormatError):
+        read_loop_ctl(path)  # read as an RV file, its values are in the wrong places
+    # Only PGV and PGA, and log-spaced periods
+    only = read_td_loop_ctl(write(tmp_path, td_ctl_with(" 5 0.01, 0.1", " 0 0.01, 0.1"), "y.ctl"))
+    assert only.scenarios["periods"] == []
+    text = td_ctl_with(" 1\n!if log-spaced periods", " 0\n!if log-spaced periods")
+    text = text.replace(" 5 0.01, 0.1, 0.2, 1.0, 2.0", " 9 0.1 10.0", 1)
+    spaced = read_td_loop_ctl(write(tmp_path, text, "z.ctl"))
+    assert spaced.scenarios["periods"] == {"start": 0.1, "stop": 10.0, "count": 9}
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        ("03/03/23", "01/22/21", "has the date '01/22/21'; pysmsim reads 03/03/23"),
+        (
+            " 5 0.01, 0.1, 0.2, 1.0, 2.0",
+            " 2 0.0 1.0",
+            "periods of tmrsk_loop_td_drvr must be above 0",
+        ),
+    ],
+)
+def test_td_ctl_errors(tmp_path: Path, old: str, new: str, message: str) -> None:
+    with pytest.raises(LegacyFormatError, match=re.escape(message)):
+        read_loop_ctl(write(tmp_path, td_ctl_with(old, new), "x.ctl"))
+
+
 # --- Run files ----------------------------------------------------------------------
 
 
@@ -235,6 +303,19 @@ def test_convert(tmp_path: Path) -> None:
     assert config.params == read_params(params_path)[0]
     assert config.output.path == "tmrsk_loop_rv_drvr.csv"
     assert len(config.scenarios.periods) == 5
+
+
+def test_convert_td(tmp_path: Path) -> None:
+    text, notes = convert(write(tmp_path, OFR), SMSIM_FILES / "tmrsk_loop_td_drvr.ctl")
+    assert notes == [
+        "a tmrsk_loop_td_drvr control file: run this file with 'pysmsim run --td' for the "
+        "time-domain simulations ([td] sets them), and add --no-rv to skip the "
+        "random-vibration ones"
+    ]
+    config = parse_config(tomllib.loads(text))
+    assert config.output.path == "tmrsk_loop_td_drvr.csv"
+    assert config.scenarios.pga and config.scenarios.pgv
+    assert config.scenarios.distances == (10.0, 40.0, 80.0)
 
 
 def test_convert_without_ctl(tmp_path: Path) -> None:

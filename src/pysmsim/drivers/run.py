@@ -1,10 +1,10 @@
-"""Fourier spectra and random-vibration peak motions in one run.
+"""Fourier spectra, random-vibration and time-domain peak motions in one run.
 
 :func:`run` computes, for every scenario of a
 :class:`~pysmsim.scenario.ScenarioGrid`, the Fourier acceleration spectrum
-at given frequencies and the random-vibration peak motions, and returns
-three tables that share their rows (one per scenario, in the order stress,
-kappa_0, magnitude, distance)::
+at given frequencies, the random-vibration peak motions and, when asked,
+the time-domain simulations, and returns tables that share their rows (one
+per scenario, in the order stress, kappa_0, magnitude, distance)::
 
     import numpy as np
     from pysmsim.io.config import load_config
@@ -16,6 +16,10 @@ kappa_0, magnitude, distance)::
     result.fas        # fas(f) for each frequency
     result.rv         # fup, durations, pgv, pga and psa(T) for each period
     write_hdf5(result, "results.h5")
+
+    result = run(config.params, config.scenarios, td=True)
+    result.td         # means of the simulations: pga, arias, psa(T), ...
+    result.td_details # one row per scenario and measure, with the spreads
 
 The tables share their index (the scenario number, from 0), so
 ``result.scenarios.join(result.rv)`` gives the table of
@@ -33,12 +37,13 @@ import pandas as pd
 
 from pysmsim.drivers.loop_fas import fas_column, params_for
 from pysmsim.drivers.loop_rv import psa_column, rv_loop
+from pysmsim.drivers.loop_td import TD_COLUMNS, TD_SCENARIO_COLUMNS, td_loop_details, td_table
 from pysmsim.params import Params
 from pysmsim.scenario import DistanceMetric, ScenarioGrid
 from pysmsim.spectrum.distance import rjb_to_rrup_depth
 from pysmsim.spectrum.fas import spectrum_factors
 
-__all__ = ["RV_COLUMNS", "SCENARIO_COLUMNS", "RunResult", "run"]
+__all__ = ["RV_COLUMNS", "SCENARIO_COLUMNS", "TD_COLUMNS", "RunResult", "run"]
 
 SCENARIO_COLUMNS = (
     "magnitude",
@@ -70,7 +75,7 @@ excitation durations (s).
 
 @dataclass(frozen=True, slots=True, kw_only=True, eq=False)
 class RunResult:
-    """The three tables of a run, one row per scenario.
+    """The tables of a run, one row per scenario.
 
     Attributes
     ----------
@@ -91,6 +96,16 @@ class RunResult:
         (cm/s^2) (those the grid asks for) and ``psa(T)`` (cm/s^2) for each
         period of the grid. NaN where a BT15 table does not reach the
         magnitude and distance.
+    td : pandas.DataFrame or None
+        Time-domain simulations: the columns
+        :data:`~pysmsim.drivers.loop_td.TD_COLUMNS`, then the arithmetic
+        means of ``pgv`` (cm/s), ``pga`` (cm/s^2) (those the grid asks
+        for), ``pgd`` (cm), ``arias`` (cm/s), ``dur_75_05`` and
+        ``dur_95_05`` (s) and ``psa(T)`` (cm/s^2) for each period.
+    td_details : pandas.DataFrame or None
+        The table of :func:`~pysmsim.drivers.loop_td.td_loop_details`: one
+        row per scenario and measure, with the arithmetic and geometric
+        means and spreads of the simulations.
     """
 
     params: Params
@@ -100,6 +115,8 @@ class RunResult:
     frequencies: npt.NDArray[np.float64]
     fas: pd.DataFrame | None
     rv: pd.DataFrame | None
+    td: pd.DataFrame | None = None
+    td_details: pd.DataFrame | None = None
 
 
 def run(
@@ -108,9 +125,10 @@ def run(
     frequencies: npt.ArrayLike | None = None,
     *,
     rv: bool = True,
+    td: bool = False,
     fortran_compat: bool = False,
 ) -> RunResult:
-    """Compute the FAS and the random-vibration peak motions of a grid.
+    """Compute the FAS and the peak motions of a grid.
 
     Parameters
     ----------
@@ -125,6 +143,10 @@ def run(
         if not given. No FAS when there are none.
     rv : bool
         Whether to compute the random-vibration peak motions.
+    td : bool
+        Whether to simulate ``params.td.nsims`` time series of every
+        scenario (much slower than RV; see
+        :func:`~pysmsim.drivers.loop_td.td_loop_details`).
     fortran_compat : bool
         Make kappa independent of magnitude even when the grid does not
         give kappa_0, compute fup from kappa_0, and compute the DK80 peak
@@ -202,6 +224,14 @@ def run(
         motions = ["pgv"] * grid.pgv + ["pga"] * grid.pga + [psa_column(t) for t in grid.periods]
         rv_table = wide[[*RV_COLUMNS, *motions]].reset_index(drop=True)
 
+    td_wide: pd.DataFrame | None = None
+    td_details: pd.DataFrame | None = None
+    if td:
+        td_details = td_loop_details(params, grid, fortran_compat=fortran_compat)
+        wide = td_table(td_details, grid)
+        motions = [c for c in wide.columns if c not in TD_SCENARIO_COLUMNS]
+        td_wide = wide[[*TD_COLUMNS, *motions]].reset_index(drop=True)
+
     return RunResult(
         params=params,
         grid=grid,
@@ -210,4 +240,6 @@ def run(
         frequencies=f,
         fas=fas,
         rv=rv_table,
+        td=td_wide,
+        td_details=td_details,
     )
