@@ -21,6 +21,18 @@
   on where SMSIM would behave differently from pysmsim are printed and
   written at the top of the run file.
 
+- Single-scenario drivers (`pysmsim.drivers.single`), the equivalents of
+  SMSIM's `gm_rv_drvr`, `gm_td_drvr` and `FAS_DRVR`: `rv_scenario` (PGD,
+  PGV, PGA, Arias intensity and PSA by random vibration, with their
+  moments, durations and peak factors), `td_scenario` (the averages of the
+  time-domain simulations, and the acceleration, velocity and displacement
+  of any one of them) and `fas_scenario` (the Fourier spectra of ground and
+  oscillator motion with each factor of the spectrum), and the command
+  `pysmsim scenario RUN.toml -m M (-r RRUP | --rjb RJB) [--td] [-o DIR]`.
+  They agree with the three SMSIM programs to the digits those print, once
+  an SMSIM bug is patched in the oracle: the programs leave the rupture
+  distance of the Stafford (2022) spreading and Q unset.
+
 Given SMSIM's own white noise, a pysmsim time series agrees with the
 double-precision Fortran build to about 1e-10 of its peak, for the
 exponential and box windows, both noise distributions and a low-cut pad.

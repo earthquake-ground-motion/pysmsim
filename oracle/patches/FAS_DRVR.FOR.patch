@@ -1,0 +1,31 @@
+Insert a comma after the P (scale factor) descriptor where a repeat count follows it,
+as in 1p5(1x,e10.3) -> 1p,5(1x,e10.3). Lahey and Intel Fortran accept the
+short form; gfortran rejects it ("Comma required after P descriptor").
+Output layout is unchanged.
+
+--- a/FAS_DRVR.FOR
++++ b/FAS_DRVR.FOR
+@@ -354,19 +354,19 @@
+ 
+       write(nout,*)
+       write(nout, '(a)') ' *********** NEW R AND M ***********'
+-      write(nout, '(a, 1p5(1x,e10.3))')
++      write(nout, '(a, 1p,5(1x,e10.3))')
+      :      ' Rrup, f_ff, Rps, amag, kappa = ', 
+      :        r, f_ff, rmod, amag, kappa_f(amag)
+       write( nout, '(2x,a,1x,1pe10.3)') ' const= ', const
+       if (numsource .eq. 1 .or. numsource .eq. 2 .or. 
+      :    numsource .eq. 11) then
+-        write( nout, '(2x,a,1p4(1x,e10.3))') 
++        write( nout, '(2x,a,1p,4(1x,e10.3))') 
+      :    ' amag, stress, fa, fb= ', amag, stress, fa, fb
+       else
+-        write( nout, '(2x,a,1p4(1x,e10.3))') 
++        write( nout, '(2x,a,1p,4(1x,e10.3))') 
+      :    ' amag, fa, fb= ', amag, fa, fb
+       end if
+-      write( nout, '(2x,a,1p2(1x,e10.3))') ' am0, am0b_m0fa= ', 
++      write( nout, '(2x,a,1p,2(1x,e10.3))') ' am0, am0b_m0fa= ', 
+      :                                       am0, am0b_m0
+ 
+       write(*,*)

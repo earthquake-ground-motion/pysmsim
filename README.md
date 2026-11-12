@@ -59,6 +59,29 @@ The output format follows the suffix given with `-o`, or `--format`:
 differs from it (see `CLAUDE.md`). `pysmsim --help` and
 `pysmsim run --help` list every option.
 
+### One scenario in detail
+
+`pysmsim scenario` computes one magnitude and distance with the model,
+oscillator periods, damping and frequencies of a run file, and prints every
+detail, as SMSIM's `gm_rv_drvr`, `gm_td_drvr` and `FAS_DRVR` do:
+
+```bash
+pysmsim scenario examples/wna_bt15_example.toml -m 6 -r 20
+pysmsim scenario examples/wna_bt15_example.toml -m 6 --rjb 15 --td -o m6_rjb15
+pysmsim scenario examples/wna_bt15_example.toml -m 6 -r 20 --td --series 1 -o m6
+```
+
+The distance is the rupture distance (`-r`), or the Joyner-Boore distance
+(`--rjb`), converted to Rrup as the run file's `[scenarios]` says. The RV
+results are PGD, PGV, PGA, the Arias intensity and PSA at each period, with
+their moments, durations and peak factors. `--td` adds the means, standard
+errors, geometric means and factors of `[td] nsims` simulations (or
+`--nsims N`), and the Fourier spectra and their factors come when the run
+file gives `[scenarios] frequencies`. With `-o DIR`, the tables are also
+written as CSV files in DIR: `rv.csv`, `td.csv`, `fas.csv` and, with
+`--series K`, `td_series.csv`, the acceleration (cm/s²), velocity (cm/s)
+and displacement (cm) of simulation K.
+
 ### Converting SMSIM input files
 
 `pysmsim convert` turns an SMSIM parameter file (the format of SMSIM
@@ -92,6 +115,20 @@ from pysmsim.td.gm_td import td_motion
 sims = td_motion(config.params, 6.0, 20.0, [0.1, 1.0], nsims=20, keep_series=True)
 sims.pga, sims.psa, sims.acc   # one value (or series) per simulation
 sims.statistics("pga")         # mean, std, geometric mean and factor
+```
+
+For one scenario, `pysmsim.drivers.single` gives every intermediate
+quantity:
+
+```python
+import numpy as np
+from pysmsim.drivers.single import fas_scenario, rv_scenario, td_scenario
+
+rv = rv_scenario(config.params, 6.0, 20.0, [0.1, 1.0])   # Rrup = 20 km
+rv.pga.peak, rv.arias, rv.table()   # one row per measure, all quantities
+td = td_scenario(config.params, 6.0, 20.0, [0.1, 1.0], keep_series=True)
+td.table(), td.series(0)            # averages; time, acc, vel, dis
+fas_scenario(config.params, 6.0, 20.0, np.logspace(-2, 2, 41), [0.1, 1.0])
 ```
 
 The TD simulations draw their noise from NumPy's random-number generator,

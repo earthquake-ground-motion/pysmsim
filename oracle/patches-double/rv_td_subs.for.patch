@@ -1,0 +1,18 @@
+Double-precision build only: change explicit REAL(4)/REAL*4 declarations to plain REAL,
+so that -fdefault-real-8 promotes them like the rest of the code.
+
+--- a/rv_td_subs.for
++++ b/rv_td_subs.for
+@@ -2276,10 +2276,10 @@
+       function q(f) 
+ 
+       logical, save ::  firstcall_q = .true.
+-      real(4), save ::  qt1, qt2, st
++      real, save ::  qt1, qt2, st
+       
+       real, intent(in) :: f
+-      real(4) :: q      
++      real :: q
+       
+       include 'smsim.fi'
+ 

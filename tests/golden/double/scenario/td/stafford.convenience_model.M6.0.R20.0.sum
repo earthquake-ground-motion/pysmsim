@@ -1,0 +1,172 @@
+
+   ***************** SMSIM, 08Jul22 Version  ************************
+
+pysmsim golden file                                                             
+ summary file: stafford.convenience
+ *** Results computed using gm_td_drvr ***
+
+
+ file with parameters: stafford.convenience_model.params
+ !Title:
+        Stafford et al. (202x) convenience model                          
+ !rho, beta, prtitn, rtp, fs:
+   2.75  3.50 0.707 0.55 2.00
+ !spectral shape: source number, pf_a, pd_a, pf_b, pd_b
+ !  (1=Single Corner;2=Joyner;3=A93;...;8=Jena;9=AS00;10=A05;11=Generalized multiplicative 2-corner; 12=Generalized additive 2-corner)
+ !  pf, pd (1-corner spectrum = 1/(1+(f/fc)**pf)**pd; 0.0 otherwise)
+ !  (usual model: pf=2.0,pd=1.0; Butterworth: pf=4.0,pd=0.5)
+ !  (Note: power of high freq decay --> pf*pd)
+ !  NOTE: see a params file for more complete description of parameters
+   1 2.00 1.00 0.00 0.00
+ ! stress specification:  istress_model, scoeff01, scoeff02, scoeff03, scoeff04, scoeff05
+ !  (see params file for meaning of params)
+  3  5.0700E+00  6.4510E-01  4.0770E-01  1.1700E-01  0.0000E+00
+ ! spectral scaling:  c1_fa, c2_fa, amagc4fa, c1_eps, c2_eps, amagc4eps, mag4eps1
+ !  (fbdfa, amagc for Joyner model, usually 4.0, 7.0)
+ !  (not used for srce 3, but placeholders still needed)
+ !  NOTE: see ofr.params for more complete description of parameters
+  0.000E+00  0.000E+00  0.00  0.000E+00  0.000E+00  0.00 0.00
+ !
+ !finite_fault factor specification:
+DeltaM (0 0 0 0 0 0 0 if a finite-fault factor is not to be used)
+ !
+
+ !    If iflag_f_ff = 1: rps = sqrt(r^2 + f_ff^2))
+ !    If iflag_f_ff = 2: rps =  r + f_ff
+ !   Use rps in the calculations (this variable is called rmod in the code; it should be changed to rps to
+ !   reflect my current preferred terminology.  I do not have time to do this now).
+ !  Specification of the finite-fault factor h:
+ !    If nlines = 1
+ !      log10(f_ff) = c1 + c2*amag
+ !    If nlines = 2
+ !      log10(f_ff) = c1 + c2*amag  for amag<Mh
+ !      log10(f_ff) = c3 + c4*amag  for amag>=Mh
+ !      where Mh is determined by the intersection of the two lines
+ !      (this is computed in the program)
+ !    If nlines = 3
+ !      log10(f_ff) = c1 + c2*amag  for amag<Mh-DeltaM/2
+ !      log10(f_ff) = c3 + c4*amag  for amag>=Mh+DeltaM/2
+ !      log10(f_ff) given by a cubic in amag between the two lines (this
+ !        produces a smooth transition over the magnitude range DeltaM
+ !    If nlines = 999, uses a single equation approximation of the nlines=3 spreading function, as discussed in generalize_boore-thompson_2015_finite-fault_factor.v3.pdf, included in the SMSIM distribution file
+ !    If nlines = 1000, implements Staffords equation, with h_a = c1, h_b = c2, h_g = c3, h_d = c4, and h_e = DeltaM
+           2        1000 -0.77710000000000001       0.47680000000000000        1.1513000000000000        3.4180000000000001        7.0880000000000001     
+     mh_f_ff, m1t_f_ff, m2t_f_ff =   7.09  0.00  0.00
+     c0t_f_ff, c1t_f_ff, c2t_f_ff, c3t_f_ff =   0.000E+00  0.000E+00  0.000E+00  0.000E+00
+ i_gsprd_option =  0
+  r1_dmb_gsprd, pgsprd_r_le_r1_lf, pgsprd_r_le_r1_hf, pgsprd_r_gt_r1, ft1_dmb_gsprd, ft2_dmb_gsprd = 
+  10.00  0.00  0.00  0.00  0.00  0.00
+ gsprd: r_ref, nsegs, (rlow(i), a_s, b_s, m_s(i))  (Usually set r_ref = 1.0 km)
+    1.00
+    3
+     1.00 -1.168E+00  0.000E+00 6.50
+    25.00 -9.293E-01  0.000E+00 6.50
+    85.00 -5.000E-01  0.000E+00 6.50
+ q: fr1, Qr1, s1, ft1, ft2, fr2, qr2, s2, c_q
+    1.000  183.70  0.708   1.000   1.000   1.000  183.70  0.708 3.50
+ source duration: weights of 1/fa, 1/fb
+  0.50 0.50
+ path duration: nknots, (rdur(i), dur(i), slope of last segment
+    6
+     0.0   0.00
+     7.0   2.40
+    45.0   8.40
+   125.0  10.90
+   175.0  17.40
+   270.0  34.20
+   1.560E-01
+ site amplification: namps, (famp(i), amp(i))
+   50
+    0.001  1.012
+    0.001  1.015
+    0.002  1.017
+    0.002  1.020
+    0.003  1.022
+    0.003  1.024
+    0.004  1.027
+    0.005  1.029
+    0.007  1.032
+    0.008  1.034
+    0.010  1.037
+    0.013  1.039
+    0.017  1.049
+    0.021  1.069
+    0.027  1.089
+    0.034  1.110
+    0.043  1.131
+    0.054  1.158
+    0.069  1.192
+    0.087  1.236
+    0.110  1.294
+    0.139  1.367
+    0.176  1.443
+    0.222  1.520
+    0.281  1.595
+    0.356  1.661
+    0.450  1.722
+    0.569  1.780
+    0.720  1.839
+    0.910  1.904
+    1.151  1.973
+    1.456  2.043
+    1.842  2.113
+    2.330  2.182
+    2.947  2.251
+    3.728  2.323
+    4.715  2.403
+    5.964  2.497
+    7.543  2.609
+    9.541  2.726
+   12.068  2.848
+   15.264  2.974
+   19.307  3.106
+   24.421  3.242
+   30.888  3.383
+   39.069  3.529
+   49.417  3.681
+   62.505  3.838
+   79.060  4.002
+  100.000  4.171
+ site diminution parameters: fm, akappa, dkappadmag, amagkref
+    0.000  3.900E-02  0.000E+00 0.00
+ low-cut filter parameters: fcut, nslope
+    0.000  8
+ high-cut filter parameters: 
+   itype_hcfilt
+     0=no high-cut filter (but the other parameters are needed as placeholders)
+     1=raised half cycle of cosine
+     2= quarter cycle of a cosine
+     fhc1, fhc2 (low and high frequency
+     eta_hcfilt (power of cosine)
+           0   25.000000000000000        50.000000000000000        1.0000000000000000     
+ window params: indxwind(0=box,1=exp),  taper, eps_w, eta_w, f_tb2te, f_te_xtnd
+  1 0.05  0.20  0.050  2.1  1.0
+ timing stuff: dur_fctr, dt, tshift, seed, nsims, iran_type
+  1.30 0.0050  60.00  123.0  800 0
+
+ *********** NEW R AND M ***********
+ r, f_ff, rmod, amag, kappa =   2.000E+01  3.839E+00  2.384E+01
+  6.000E+00  3.900E-02
+  File with response spectra: stafford.convenience_model.M6.
+   const=   5.249E-24
+   amag, stress, fa, fb, dursource, durpath, durex=  6.000  1.59E+02  4.157E-01  4.157E-01  2.41E+00  5.06E+00  7.46E+00
+   am0, am0b_m0fa=   1.122E+25  0.000E+00
+   npw2, ntaper, dt, te, total duration =  16384      0  0.00500   15.8   81.9
+  pgdam(cm)  sem/pgdam pgvam(cm/s)  sem/pgvam pgaam(cm/s2)  sem/pgaam
+  1.227E+00  9.606E-03   4.428E+00  6.878E-03    6.266E+01  4.712E-03
+  pgdgm(cm)  sem_pgdgm pgvgm(cm/s)  sem_pgvgm pgagm(cm/s2)  sem_pgagm
+  1.184E+00  1.010E+00   4.349E+00  1.007E+00    6.213E+01  1.005E+00
+ Arias intensity(cm/s)  sem/Arias
+           4.008E+00           3.701E-03
+ Arias intensitygm(cm/s) sem_Ariasgm
+               3.986E+00   7.994E-01
+   Fractional oscillator damping =  0.050
+    per(s)      freq  psv(cm/s)    sem/psv psa(cm/s2)    psd(cm) psvgm(cm/s)  psvgm_sem psagm(cm/s2)  psdgm(cm)
+    0.0100  100.0000  9.973E-02  4.712E-03  6.266E+01  1.587E-04   9.887E-02  1.005E+00   6.212E+01  1.574E-04
+    0.0300   33.3333  3.364E-01  4.442E-03  7.046E+01  1.606E-03   3.338E-01  1.004E+00   6.992E+01  1.594E-03
+    0.1000   10.0000  2.319E+00  5.501E-03  1.457E+02  3.691E-02   2.292E+00  1.005E+00   1.440E+02  3.648E-02
+    0.3000    3.3333  6.074E+00  7.444E-03  1.272E+02  2.900E-01   5.944E+00  1.007E+00   1.245E+02  2.838E-01
+    1.0000    1.0000  8.131E+00  1.055E-02  5.109E+01  1.294E+00   7.781E+00  1.011E+00   4.889E+01  1.238E+00
+    3.0000    0.3333  4.393E+00  1.266E-02  9.200E+00  2.097E+00   4.127E+00  1.013E+00   8.644E+00  1.971E+00
+   10.0000    0.1000  9.146E-01  9.844E-03  5.746E-01  1.456E+00   8.802E-01  1.010E+00   5.530E-01  1.401E+00
+

@@ -1,0 +1,25 @@
+Insert a comma after the P (scale factor) descriptor where a repeat count follows it,
+as in 1p5(1x,e10.3) -> 1p,5(1x,e10.3). Lahey and Intel Fortran accept the
+short form; gfortran rejects it ("Comma required after P descriptor").
+Output layout is unchanged.
+
+--- a/gm_rv_drvr.for
++++ b/gm_rv_drvr.for
+@@ -490,7 +490,7 @@
+ 
+       write(nu_sum,*)
+       write(nu_sum, '(a)') ' *********** NEW R AND M ********** '
+-      write(nu_sum, '(a, 1p5(1x,e10.3))')
++      write(nu_sum, '(a, 1p,5(1x,e10.3))')
+      :      ' r, f_ff, rmod, amag, kappa = ', 
+      :        r, f_ff, rmod, amag, kappa_f(amag)
+       if (psvcalc(1:1) == 'Y') then
+@@ -513,7 +513,7 @@
+      :    ' amag, fa, fb, dursource, durpath, durex= ', 
+      :      amag, fa, fb, dursource_calc, durpath_calc, durex
+       end if
+-      write(nu_sum, '(2x,a,1p2(1x,e10.3))') ' am0, am0b_m0fa= ', 
++      write(nu_sum, '(2x,a,1p,2(1x,e10.3))') ' am0, am0b_m0fa= ', 
+      :                                       am0, am0b_m0
+       write(nu_sum,'( 30x,a, 
+      :                 2x,a, 4x,a,

@@ -1,0 +1,43 @@
+Insert a comma after the P (scale factor) descriptor where a repeat count follows it,
+as in 1p5(1x,e10.3) -> 1p,5(1x,e10.3). Lahey and Intel Fortran accept the
+short form; gfortran rejects it ("Comma required after P descriptor").
+Output layout is unchanged.
+
+--- a/gm_td_drvr.for
++++ b/gm_td_drvr.for
+@@ -487,7 +487,7 @@
+         open(unit=nuacc,file=f_avd(1:nc_f_avd),status='unknown')
+         write(nuacc, '(t12,a,t24,a,t36,a,t48,a)') 'T', 'A', 'V', 'D'
+         do i = 1, npw2
+-          write(nuacc, '(1x,f11.6,1p3(1x,e11.4))') 
++          write(nuacc, '(1x,f11.6,1p,3(1x,e11.4))') 
+      :      float(i-1)*dt, acc_save(i), vel_save(i), dis_save(i)
+         end do
+       end if 
+@@ -496,7 +496,7 @@
+ 
+       write(nout, *)
+       write(nout, '(a)') ' *********** NEW R AND M ***********'
+-      write(nout, '(a, 1p3(1x,e10.3))')
++      write(nout, '(a, 1p,3(1x,e10.3))')
+      :      ' r, f_ff, rmod, amag, kappa = ', 
+      :        r, f_ff, rmod, amag, kappa_f(amag)
+       if (psvcalc(1:1) .eq. 'Y') then
+@@ -517,7 +517,7 @@
+      :    ' amag, fa, fb, dursource, durpath, durex= ', 
+      :      amag, fa, fb, dursource_calc, durpath_calc, durex
+       end if
+-      write(nout, '(2x,a,1p2(1x,e10.3))') ' am0, am0b_m0fa= ', 
++      write(nout, '(2x,a,1p,2(1x,e10.3))') ' am0, am0b_m0fa= ', 
+      :                                       am0, am0b_m0
+       write(nout, '(2x,a, i6, 1x,i6, 1x,f8.5, 2(1x,f6.1))')
+      :  ' npw2, ntaper, dt, te, total duration = ', 
+@@ -640,7 +640,7 @@
+         close(unit=ncol)
+         if (write_pavd(1:1) .eq. 'Y') then
+           do i = 1, 2
+-            write(npavd, '(3(0p1x,f7.3,1p3(1x,e10.3)))')
++            write(npavd, '(3(0p,1x,f7.3,1p,3(1x,e10.3)))')
+      :       t_pgd(i),pgdsimgm,
+      :                pgdsimgm*(twopi/t_pgd(i)),
+      :                pgdsimgm*(twopi/t_pgd(i))**2,

@@ -306,7 +306,15 @@ physics.
     both and returns `RunResult`: tables sharing their rows (scenarios,
     fas, rv, and with `td=True` td and td_details), as the owner wants for
     a typical run. `td_loop_details` gives every TD measure's mean, std,
-    gmean and gfactor; `td_loop` the means;
+    gmean and gfactor; `td_loop` the means. `single.py` is one scenario
+    in full detail (SMSIM's `gm_rv_drvr`, `gm_td_drvr`, `FAS_DRVR`):
+    `rv_scenario`, `td_scenario` (`.table()`, `.series(k)` with time, acc,
+    vel, dis) and `fas_scenario`, all taking Rrup and leaving kappa
+    magnitude-dependent, as those programs do (only the loop drivers force
+    `dkappadmag` to 0). SMSIM's three programs never set the common
+    `rrup`, which the Stafford spreading and `fr1 = -1` Q use; the oracle
+    patches that bug (`*.rrup.patch`) and pysmsim does not reproduce it,
+    even with `fortran_compat`;
   - `io/`: `config.py` (TOML; `params_table` gives the parameter
     sections as a dict), `bt15_tables.py`, `hdf5.py` (`write_hdf5`
     and `read_hdf5`; a group per table, one dataset per column, FAS and PSA
@@ -325,7 +333,11 @@ physics.
     0.001 cm/s² ruins weak motions. It
     re-simulates scenario by scenario (same seed) and writes as it goes;
   - `cli.py`: `pysmsim run` (`--td` adds the TD simulations, `--no-rv`
-    drops RV) and `pysmsim check` (also `python -m pysmsim`).
+    drops RV), `pysmsim scenario RUN -m M (-r RRUP | --rjb RJB) [--td]
+    [--series K] [-o DIR]` (prints the single-scenario tables; `-o` writes
+    them as rv.csv, td.csv, fas.csv, td_series.csv; periods, damping,
+    frequencies and the Rjb conversion come from the run file) and
+    `pysmsim check` (also `python -m pysmsim`).
     `[scenarios] frequencies` in the run file adds the FAS to a
     run. A grid may have at most 1,000 periods and 1,000 frequencies (the
     owner's limit, so that a run file cannot exhaust memory; checked before

@@ -50,6 +50,17 @@
 # The control files take k0 and stress from the params file; their headers
 # list the magnitudes, distances, periods and frequencies.
 #
+# And scenario/: the single-scenario drivers, fed their answers on stdin,
+# for every shipped .params file: gm_rv_drvr (rv/, the .col file and the
+# summary) and FAS_DRVR (fas/, on 41 frequencies from 0.01 to 100 Hz and
+# oscillators at 0.1, 0.3, 1 and 3 s) at M 4, Rrup 10 km; M 6, Rrup 20 km;
+# and M 7.5, Rrup 100 km; and gm_td_drvr (td/, the .col file and the
+# summary, with the params file's number of simulations) at M 6, Rrup
+# 20 km, saving the series of simulation 1 for ofr.params (gzipped). The RV
+# and TD runs use oscillators of 5% damping at 0.01, 0.03, 0.1, 0.3, 1, 3
+# and 10 s. Dates and times are removed from the summaries, saved as
+# <stem>.M<m>.R<rrup>.sum.
+#
 # Set SKIP_TD=1 to leave out the time-domain runs, which take longest.
 
 set -euo pipefail
@@ -72,7 +83,7 @@ OUT_DIR=${3:-"$ORACLE_DIR/../tests/golden/$PRECISION"}
 SKIP_TD=${SKIP_TD:-0}
 
 for prog in tmrsk_loop_rv_drvr fmrsk_loop_fas_drvr tmrsk_loop_td_drvr factor_dump response_dump \
-    td_dump; do
+    td_dump gm_rv_drvr gm_td_drvr FAS_DRVR; do
     if [ ! -x "$BIN_DIR/$prog" ]; then
         echo "error: $BIN_DIR/$prog not found; run oracle/build.sh first" >&2
         exit 1
@@ -85,11 +96,11 @@ mkdir -p "$OUT_DIR"
 OUT_DIR=$(cd "$OUT_DIR" && pwd)
 rm -rf "$OUT_DIR/rv" "$OUT_DIR/fas" "$OUT_DIR/td" "$OUT_DIR/factors" "$OUT_DIR/source" \
     "$OUT_DIR/path" "$OUT_DIR/site" "$OUT_DIR/site_lines" "$OUT_DIR/response" \
-    "$OUT_DIR/rv_cases" "$OUT_DIR/example" "$OUT_DIR/td_series"
+    "$OUT_DIR/rv_cases" "$OUT_DIR/example" "$OUT_DIR/td_series" "$OUT_DIR/scenario"
 mkdir -p "$OUT_DIR/rv" "$OUT_DIR/fas" "$OUT_DIR/factors" "$OUT_DIR/source" "$OUT_DIR/path" \
     "$OUT_DIR/site" "$OUT_DIR/site_lines" "$OUT_DIR/response" "$OUT_DIR/rv_cases" \
-    "$OUT_DIR/example" "$OUT_DIR/td_series"
-[ "$SKIP_TD" = 1 ] || mkdir -p "$OUT_DIR/td"
+    "$OUT_DIR/example" "$OUT_DIR/td_series" "$OUT_DIR/scenario/rv" "$OUT_DIR/scenario/fas"
+[ "$SKIP_TD" = 1 ] || mkdir -p "$OUT_DIR/td" "$OUT_DIR/scenario/td"
 
 # prepare <dir>: params files with bare .pars file names (they are written
 # with Windows paths, \smsim\...), and the .pars files themselves
@@ -299,6 +310,53 @@ done
 out="ofr.M6.0.R20.0.txt"
 (cd "$dir" && "$BIN_DIR/td_dump" ofr.params 6.0 20.0 "$out" > /dev/null)
 gzip -n -c "$dir/$out" > "$OUT_DIR/td_series/$out.gz"
+
+# Single-scenario drivers. They ask their questions on stdin; the answers
+# are given one per line, in the order the programs ask them.
+SCENARIO_PERIODS="0.01 0.03 0.1 0.3 1.0 3.0 10.0"
+# strip_times <summary file>: the summary without dates and times
+strip_times() {
+    grep -v -e '^ *Date:' -e '^ *Time Start:' -e '^ *Time Stop:' -e '^ *Elapsed time' "$1"
+}
+dir="$RUN_DIR/scenario"
+prepare "$dir"
+for f in "$SMSIM_DIR"/params_and_pars_files/*.params; do
+    params=$(basename "$f")
+    stem=${params%.params}
+    echo "scenario: $stem"
+    for mr in "4.0 10.0" "6.0 20.0" "7.5 100.0"; do
+        set -- $mr
+        out="$stem.M$1.R$2"
+        {
+            echo "pysmsim golden file"; echo "$params"; echo "$out.rv.sum"
+            echo y; echo y; echo "0.05 7"; for p in $SCENARIO_PERIODS; do echo "$p"; done
+            echo "$1"; echo "$2"; echo "$out.rv.col"; echo n
+        } | (cd "$dir" && "$BIN_DIR/gm_rv_drvr" > "$out.rv.stdout.txt" 2>&1)
+        cp "$dir/$out.rv.col" "$OUT_DIR/scenario/rv/$out.col"
+        strip_times "$dir/$out.rv.sum" > "$OUT_DIR/scenario/rv/$out.sum"
+        {
+            echo "pysmsim golden file"; echo "$params"; echo "$out.fas.sum"
+            echo n; echo "0.01 100.0 41"
+            echo y; echo y; echo "0.05 4"; for p in 0.1 0.3 1.0 3.0; do echo "$p"; done
+            echo "$2"; echo "$1"; echo "$out.fas.col"; echo n
+        } | (cd "$dir" && "$BIN_DIR/FAS_DRVR" > "$out.fas.stdout.txt" 2>&1)
+        cp "$dir/$out.fas.col" "$OUT_DIR/scenario/fas/$out.col"
+    done
+    [ "$SKIP_TD" = 1 ] && continue
+    out="$stem.M6.0.R20.0"
+    {
+        echo "pysmsim golden file"; echo "$params"; echo "$out.td.sum"
+        echo y; echo y; echo "0.05 7"; for p in $SCENARIO_PERIODS; do echo "$p"; done
+        echo 6.0; echo 20.0; echo "$out.td.col"
+        if [ "$stem" = ofr ]; then echo y; echo 1; echo "$out.avd.col"; else echo n; fi
+        echo n
+    } | (cd "$dir" && "$BIN_DIR/gm_td_drvr" > "$out.td.stdout.txt" 2>&1)
+    cp "$dir/$out.td.col" "$OUT_DIR/scenario/td/$out.col"
+    strip_times "$dir/$out.td.sum" > "$OUT_DIR/scenario/td/$out.sum"
+    if [ "$stem" = ofr ]; then
+        gzip -n -c "$dir/$out.avd.col" > "$OUT_DIR/scenario/td/$out.avd.col.gz"
+    fi
+done
 
 # The shipped example of tmrsk_loop_rv_drvr: the reference .col file from
 # the distribution and the same run with this build (oracle/run_example.sh)
