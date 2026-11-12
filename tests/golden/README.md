@@ -37,6 +37,9 @@ oscillator corrections for WNA and ENA. The control files in
 | `site/` | `factor_dump` | 10 synthetic site and filter cases (below); M 4, 6, 8; Rrup 20 km; 41 frequencies, 0.01-100 Hz | 41 (one file per case and M) |
 | `site_lines/` | none | The crustal-amplification, diminution, low-cut and high-cut lines of each shipped `.params` file, copied without comments | (one file per params file) |
 | `td/` | `tmrsk_loop_td_drvr` | M 4, 6, 8; Rjb 5, 20, 100 km; PGV, PGA and PSA at 0.01, 0.1, 0.2, 1, 2 s (5% damping); 800 simulations | 63 |
+| `scenario/rv/` | `gm_rv_drvr` | M 4, Rrup 10 km; M 6, Rrup 20 km; M 7.5, Rrup 100 km; PSA at 0.01, 0.03, 0.1, 0.3, 1, 3, 10 s (5% damping). `.col` is the response spectrum, `.sum` the summary (PGD, PGV, PGA with their moments, the Arias intensity, the moments of each period) without its dates and times | 7 (one `.col` and one `.sum` per params file, M and Rrup) |
+| `scenario/fas/` | `FAS_DRVR` | The scenarios of `scenario/rv/`; 41 frequencies, 0.01-100 Hz; oscillator spectra at 0.1, 0.3, 1, 3 s (5% damping) | 41 (one file per params file, M and Rrup) |
+| `scenario/td/` | `gm_td_drvr` | M 6, Rrup 20 km; the periods of `scenario/rv/`; 800 simulations. `.col` and `.sum` as for `scenario/rv/`; for `ofr.params` also `.avd.col.gz`, the time, acceleration, velocity and displacement of simulation 1 | 7 (one `.col` and one `.sum` per params file) |
 | `td_series/` | `td_dump` | One simulation with its white noise: 6 synthetic window and timing cases (below) at M 5, Rrup 10 km and M 7, Rrup 50 km, and `ofr.params` at M 6, Rrup 20 km; gzipped | one per point of the series (one file per case, M and Rrup) |
 
 The `source/` cases cover the source models and stress models that the
@@ -86,6 +89,14 @@ outside the window. The cases (`oracle/inputs/td_cases.txt`) are
 exponential window with Gaussian and uniform noise and with a longer
 window, the box window with and without tapers, and a low-cut filter whose
 pad is longer than `tshift`.
+
+The `scenario/` programs are interactive; `make_golden.sh` feeds them their
+answers on stdin. They take Rrup directly. SMSIM leaves the rupture distance
+that the Stafford (2022) spreading and Q use unset in these three programs
+(the loop programs set it), so they are built with a patch that sets it
+(`oracle/patches/*.rrup.patch`); without it, the `stafford.optimal_model`
+results are wrong. Their output has 3 to 6 significant digits, which sets
+the tolerances of `test_scenario_golden.py`.
 
 The loop programs convert Rjb to Rrup with the CY14 Ztor relation for a
 strike-slip fault (case 2 in the control files).

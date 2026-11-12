@@ -1,0 +1,136 @@
+
+   ***************** SMSIM, 08Jul22 Version  ************************
+
+pysmsim golden file                                                             
+ output file: ena.scf.bt15scr_fff.bs11_atten.bt15_dp.dmb_3kps_amps_aoi_00.k0.006.bt15e_drms.M6.0.R20.0.rv.sum
+ *** Results computed using GM_RV_DRVR ***
+
+
+ file with parameters: ena.scf.bt15scr_fff.
+ !Title:
+      Boatwright and Seekins (2011) attenuation model)                    
+ !rho, beta, prtitn, rtp, fs:
+   2.80  3.60 0.710 0.55 2.00
+ !spectral shape: source number, pf_a, pd_a, pf_b, pd_b
+ !  (1=Single Corner;2=Joyner;3=A93;...;8=Jena;9=AS00;10=A05;11=Generalized multiplicative 2-corner; 12=Generalized additive 2-corner)
+ !  pf, pd (1-corner spectrum = 1/(1+(f/fc)**pf)**pd; 0.0 otherwise)
+ !  (usual model: pf=2.0,pd=1.0; Butterworth: pf=4.0,pd=0.5)
+ !  (Note: power of high freq decay --> pf*pd)
+ !  NOTE: see a params file for more complete description of parameters
+   1 2.00 1.00 0.00 0.00
+ ! stress specification:  istress_model, scoeff01, scoeff02, scoeff03, scoeff04, scoeff05
+ !  (see params file for meaning of params)
+  1  1.7190E+02  0.0000E+00  6.5000E+00  4.0000E+00  0.0000E+00
+ ! spectral scaling:  c1_fa, c2_fa, amagc4fa, c1_eps, c2_eps, amagc4eps, mag4eps1
+ !  (fbdfa, amagc for Joyner model, usually 4.0, 7.0)
+ !  (not used for srce 3, but placeholders still needed)
+ !  NOTE: see ofr.params for more complete description of parameters
+  0.000E+00  0.000E+00  0.00  0.000E+00  0.000E+00  0.00 0.00
+ !
+ !finite_fault factor specification:
+DeltaM (0 0 0 0 0 0 0 if a finite-fault factor is not to be used)
+ !
+
+ !    If iflag_f_ff = 1: rps = sqrt(r^2 + f_ff^2))
+ !    If iflag_f_ff = 2: rps =  r + f_ff
+ !   Use rps in the calculations (this variable is called rmod in the code; it should be changed to rps to
+ !   reflect my current preferred terminology.  I do not have time to do this now).
+ !  Specification of the finite-fault factor h:
+ !    If nlines = 1
+ !      log10(f_ff) = c1 + c2*amag
+ !    If nlines = 2
+ !      log10(f_ff) = c1 + c2*amag  for amag<Mh
+ !      log10(f_ff) = c3 + c4*amag  for amag>=Mh
+ !      where Mh is determined by the intersection of the two lines
+ !      (this is computed in the program)
+ !    If nlines = 3
+ !      log10(f_ff) = c1 + c2*amag  for amag<Mh-DeltaM/2
+ !      log10(f_ff) = c3 + c4*amag  for amag>=Mh+DeltaM/2
+ !      log10(f_ff) given by a cubic in amag between the two lines (this
+ !        produces a smooth transition over the magnitude range DeltaM
+ !    If nlines = 999, uses a single equation approximation of the nlines=3 spreading function, as discussed in generalize_boore-thompson_2015_finite-fault_factor.v3.pdf, included in the SMSIM distribution file
+ !    If nlines = 1000, implements Staffords equation, with h_a = c1, h_b = c2, h_g = c3, h_d = c4, and h_e = DeltaM
+           1           3  -1.8275999999999999       0.42999999999999999      -0.51259999999999994       0.23499999999999999        2.0000000000000000     
+     mh_f_ff, m1t_f_ff, m2t_f_ff =   6.74  5.74  7.74
+     c0t_f_ff, c1t_f_ff, c2t_f_ff, c3t_f_ff =   6.421E-01  4.300E-01 -4.875E-02 -6.939E-18
+ i_gsprd_option =  0
+  r1_dmb_gsprd, pgsprd_r_le_r1_lf, pgsprd_r_le_r1_hf, pgsprd_r_gt_r1, ft1_dmb_gsprd, ft2_dmb_gsprd = 
+  10.00  0.00  0.00  0.00  0.00  0.00
+ gsprd: r_ref, nsegs, (rlow(i), a_s, b_s, m_s(i))  (Usually set r_ref = 1.0 km)
+    1.00
+    2
+     1.00 -1.000E+00  0.000E+00 6.50
+    50.00 -5.000E-01  0.000E+00 6.50
+ q: fr1, Qr1, s1, ft1, ft2, fr2, qr2, s2, c_q
+    1.000  410.00  0.500   1.000   1.000   1.000  410.00  0.500 3.50
+ source duration: weights of 1/fa, 1/fb
+  0.50 0.50
+ path duration: nknots, (rdur(i), dur(i), slope of last segment
+    8
+     0.0   0.00
+    15.0   2.60
+    35.0  17.50
+    50.0  25.10
+   125.0  25.10
+   200.0  28.50
+   392.0  46.00
+   600.0  69.10
+   1.110E-01
+ site amplification: namps, (famp(i), amp(i))
+   14
+    0.001  1.000
+    0.008  1.003
+    0.023  1.010
+    0.040  1.017
+    0.061  1.026
+    0.108  1.047
+    0.234  1.069
+    0.345  1.084
+    0.508  1.101
+    1.090  1.135
+    1.370  1.143
+    1.690  1.148
+    1.970  1.150
+    2.420  1.151
+ site diminution parameters: fm, akappa, dkappadmag, amagkref
+    0.000  6.000E-03  0.000E+00 6.00
+ low-cut filter parameters: fcut, nslope
+    0.000  8
+ high-cut filter parameters: 
+   itype_hcfilt
+     0=no high-cut filter (but the other parameters are needed as placeholders)
+     1=raised half cycle of cosine
+     2= quarter cycle of a cosine
+     fhc1, fhc2 (low and high frequency
+     eta_hcfilt (power of cosine)
+           0   25.000000000000000        50.000000000000000        1.0000000000000000     
+ parameters for rv calcs: zup, eps_int, amp_cutoff, osc_crrctn
+   10.00  1.000E-05  1.000E-03  4
+ WNA Trms4osc coefficients from file bt15_wna_acr_trms4osc.dk_rms2pk.pars
+ ENA Trms4osc coefficients from file bt15_ena_scr_trms4osc.dk_rms2pk.pars
+ fup calculated in driver =  3.665E+02
+
+ *********** NEW R AND M ********** 
+ r, f_ff, rmod, amag, kappa =   2.000E+01  5.613E+00  2.077E+01  6.000E+00  6.000E-03
+  File with response spectra: ena.scf.bt15scr_fff.bs11_atten
+   const=   4.757E-24
+   amag, stress, fa, fb, dursource, durpath, durex=  6.000  1.72E+02  4.387E-01  4.387E-01  2.28E+00  6.90E+00  9.18E+00
+   am0, am0b_m0fa=   1.122E+25  0.000E+00
+                              pga(cm/s2)  domfreq    eps      nx      nz pk_rms        amom0        amom1        amom2        amom4
+                                1.72E+02    32.16 0.9186 1494.00  590.56   3.70  1.71518E+04  2.44784E+06  7.00521E+08  1.83105E+14
+                               pgv(cm/s)  domfreq    eps      nx      nz pk_rms        amom0        amom1        amom2        amom4
+                                6.06E+00     3.49 0.9941  590.56   64.01   3.05  3.57462E+01  3.93359E+02  1.71518E+04  7.00521E+08
+                                 pgd(cm)  domfreq    eps      nx      nz pk_rms        amom0        amom1        amom2        amom4
+                                1.66E+00     0.43 0.9923   64.01    7.92   2.29  4.86825E+00  8.71537E+00  3.57462E+01  1.71518E+04
+                  Arias intensity (cm/s)
+                                2.75E+01
+   Fractional oscillator damping =  0.050
+  per(s)    freq     sd(cm)  psv(cm/s) psa(cm/s2) domfreq    eps     nx     nz pk_rms zupusd     deltay deltay_prime anz_prime ane_psv ane_dur4n_trms anz_psv anz_prime anz_dur4n_trms pk_rms_cl_eq68 pk_rms_cl_eq68_dur4n_trms pk_rms_dk_2 pk_rms_dk_dur4n_trms pk_cl_eq68/w pk_cl_eq68_dur4n_trms/w  pk_dk_2/w pk_dk_dur4n_trms/w pk_cl_eq68 pk_cl_eq68_dur4n_trms    pk_dk_2 pk_dk_dur4n_trms pk_cl_eq68*w pk_cl_eq68_dur4n_trms*w  pk_dk_2*w pk_dk_dur4n_trms*w        amom0        amom1        amom2        amom4       avib  dursource    durpath      durex       trms    per/durex sqrt(durex/trms) sqrt(trms/durex)
+   0.010 100.000  6.530E-04  4.103E-01  2.578E+02   67.33 0.6973 1724.8 1236.2   3.89   6.10  5.786E-01    5.786E-01    1105.6  1724.8          -10.0  1236.2    1105.6          -10.0           3.91                     -9.99        3.90                -9.99    6.569E-04              -1.590E-02  6.548E-04         -1.590E-02  4.128E-01            -9.990E+00  4.114E-01       -9.990E+00    2.594E+02              -6.277E+03  2.585E+02         -6.277E+03  8.72589E-02  3.01076E+01  1.56171E+04  5.44072E+09  1.000E+00  2.280E+00  6.901E+00  9.180E+00  7.833E+00  1.08928E-03        1.083E+00        9.237E-01
+   0.030  33.333  9.117E-03  1.909E+00  3.999E+02   30.78 0.4050  618.1  565.1   3.57   6.20  2.827E-01    2.827E-01     306.9   618.1          -10.0   565.1     306.9          -10.0           3.70                     -9.99        3.55                -9.99    9.452E-03              -4.770E-02  9.071E-03         -4.770E-02  1.980E+00            -9.990E+00  1.900E+00       -9.990E+00    4.146E+02              -2.092E+03  3.979E+02         -2.092E+03  2.26127E+00  4.19487E+02  8.45759E+04  3.78410E+09  1.000E+00  2.280E+00  6.901E+00  9.180E+00  7.917E+00  3.26784E-03        1.077E+00        9.286E-01
+   0.100  10.000  7.984E-02  5.016E+00  3.152E+02    9.74 0.4229  197.3  178.8   3.14   6.20  2.157E-01    2.157E-01      78.2   197.3          -10.0   178.8      78.2          -10.0           3.38                     -9.99        3.15                -9.99    8.587E-02              -1.590E-01  8.007E-02         -1.590E-01  5.395E+00            -9.990E+00  5.031E+00       -9.990E+00    3.390E+02              -6.277E+02  3.161E+02         -6.277E+02  2.08943E+01  1.24823E+03  7.82082E+04  3.56485E+08  1.000E+00  2.280E+00  6.901E+00  9.180E+00  8.183E+00  1.08928E-02        1.059E+00        9.441E-01
+   0.300   3.333  4.033E-01  8.447E+00  1.769E+02    3.32 0.5587   73.5   61.0   2.72   6.20  1.983E-01    1.983E-01      24.8    73.5          -10.0    61.0      24.8          -10.0           3.04                     -9.99        2.76                -9.99    4.508E-01              -4.770E-01  4.099E-01         -4.770E-01  9.442E+00            -9.990E+00  8.585E+00       -9.990E+00    1.977E+02              -2.092E+02  1.798E+02         -2.092E+02  8.56921E+01  1.75186E+03  3.72802E+04  2.35776E+07  1.000E+00  2.280E+00  6.901E+00  9.180E+00  8.870E+00  3.26784E-02        1.017E+00        9.829E-01
+   1.000   1.000  1.623E+00  1.020E+01  6.408E+01    1.03 0.7931   31.0   18.9   2.25   6.10  2.003E-01    2.003E-01       7.8    31.0          -10.0    18.9       7.8          -10.0           2.62                     -9.99        2.31                -9.99    1.891E+00              -1.590E+00  1.668E+00         -1.590E+00  1.188E+01            -9.990E+00  1.048E+01       -9.990E+00    7.466E+01              -6.277E+01  6.586E+01         -6.277E+01  2.27177E+02  1.43847E+03  9.48887E+03  1.06852E+06  1.000E+00  2.280E+00  6.901E+00  9.180E+00  1.103E+01  1.08928E-01        9.125E-01        1.096E+00
+   3.000   0.333  2.753E+00  5.766E+00  1.208E+01    0.38 0.9733   30.3    7.0   2.03   6.00  3.287E-01    3.287E-01       4.2    30.3          -10.0     7.0       4.2          -10.0           2.18                     -9.99        2.04                -9.99    2.960E+00              -4.770E+00  2.764E+00         -4.770E+00  6.198E+00            -9.990E+00  5.789E+00       -9.990E+00    1.298E+01              -2.092E+01  1.212E+01         -2.092E+01  1.29942E+02  2.92245E+02  7.36870E+02  7.91682E+04  1.000E+00  2.280E+00  6.901E+00  9.180E+00  1.611E+01  3.26784E-01        7.549E-01        1.325E+00
+  10.000   0.100  2.049E+00  1.288E+00  8.091E-01    0.23 0.9973   56.2    4.1   2.04   6.00  7.422E-01    7.422E-01       4.1    56.2          -10.0     4.1       4.1          -10.0           1.89                     -9.99        2.03                -9.99    1.901E+00              -1.590E+01  2.035E+00         -1.590E+01  1.194E+00            -9.990E+00  1.278E+00       -9.990E+00    7.504E-01              -6.277E+00  8.033E-01         -6.277E+00  9.17292E+00  8.69149E+00  1.83340E+01  6.78423E+03  1.000E+00  2.280E+00  6.901E+00  9.180E+00  2.306E+01  1.08928E+00        6.310E-01        1.585E+00
+

@@ -247,6 +247,78 @@ def test_run_td(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert "TD (--td): 3 simulations" in capsys.readouterr().out
 
 
+def test_scenario(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = tmp_path / "td.toml"
+    params = dataclasses.replace(
+        CONFIG.params, td=dataclasses.replace(CONFIG.params.td, nsims=3, dt=0.01, tshift=5.0)
+    )
+    path.write_text(dumps_config(type(CONFIG)(params=params, scenarios=GRID, output=CONFIG.output)))
+    out = tmp_path / "out"
+    assert (
+        main(
+            ["scenario", str(path), "-m", "6", "-r", "20", "--td", "--series", "2", "-o", str(out)]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    assert "M 6, Rrup 20 km: f_ff" in captured.out
+    assert "Random vibration:" in captured.out and "Fourier spectra:" in captured.out
+    assert "Time domain, 3 simulations" in captured.out
+    assert "Wrote rv.csv, td.csv, td_series.csv, fas.csv" in captured.err
+    rv = pd.read_csv(out / "rv.csv")
+    assert list(rv.measure) == ["pgd", "pgv", "pga", "arias", "psa", "psa"]
+    assert (rv.rrup == 20.0).all()
+    assert len(pd.read_csv(out / "fas.csv")) == 3
+    assert (pd.read_csv(out / "td.csv").nsims == 3).all()
+    series = pd.read_csv(out / "td_series.csv")
+    assert list(series.columns) == ["time", "acc", "vel", "dis"]
+
+    # Rjb, converted as the run file says; and only the Fourier spectra
+    assert (
+        main(
+            [
+                "scenario",
+                str(path),
+                "-m",
+                "6",
+                "--rjb",
+                "10",
+                "--no-rv",
+                "-q",
+                "-o",
+                str(tmp_path / "rjb"),
+            ]
+        )
+        == 0
+    )
+    assert capsys.readouterr().out == ""
+    fas = pd.read_csv(tmp_path / "rjb" / "fas.csv")
+    assert fas.rrup.iloc[0] > 10.0
+    assert not (tmp_path / "rjb" / "rv.csv").exists()
+
+    errors = {
+        ("--series", "1"): "--series needs --td, -o",
+        ("--td", "--series", "4", "-o", str(out)): "is more than the number of simulations",
+        ("--nsims", "2"): "--nsims needs --td",
+    }
+    for extra, message in errors.items():
+        assert main(["scenario", str(path), "-m", "6", "-r", "20", *extra]) == 1
+        assert message in capsys.readouterr().err
+    assert main(["scenario", str(path), "-m", "6", "-r", "0"]) == 1
+    assert "must be positive" in capsys.readouterr().err
+    no_fas = tmp_path / "no_fas.toml"
+    grid = dataclasses.replace(GRID, frequencies=())
+    no_fas.write_text(
+        dumps_config(type(CONFIG)(params=params, scenarios=grid, output=CONFIG.output))
+    )
+    assert main(["scenario", str(no_fas), "-m", "6", "-r", "20", "--no-rv"]) == 1
+    assert "--no-rv needs --td" in capsys.readouterr().err
+    assert main(["scenario", str(no_fas), "-m", "6", "-r", "20", "--td", "--nsims", "2"]) == 0
+    assert "Time domain, 2 simulations" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        main(["scenario", str(path), "-m", "6"])  # a distance is required
+
+
 def test_run_errors(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     no_freq = tmp_path / "no_freq.toml"
     no_freq.write_text(EXAMPLE.read_text().replace("frequencies = {", "# frequencies = {"))

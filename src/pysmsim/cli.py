@@ -1,8 +1,10 @@
 """The ``pysmsim`` command.
 
 ``pysmsim run`` computes the scenarios of a TOML run file and writes the
-results; ``pysmsim check`` validates run files without computing anything;
-``pysmsim convert`` turns SMSIM input files into a run file::
+results; ``pysmsim scenario`` gives every detail of one magnitude and
+distance with the model of a run file; ``pysmsim check`` validates run
+files without computing anything; ``pysmsim convert`` turns SMSIM input
+files into a run file::
 
     pysmsim check run.toml
     pysmsim run run.toml
@@ -10,6 +12,8 @@ results; ``pysmsim check`` validates run files without computing anything;
     pysmsim run run.toml -o results.col --fortran-compat
     pysmsim run run.toml --td -o results.h5
     pysmsim run run.toml --td --td-series 10 -o results.h5
+    pysmsim scenario run.toml -m 6 -r 20
+    pysmsim scenario run.toml -m 6 --rjb 15 --td --series 1 -o m6_rjb15
     pysmsim convert model.params tmrsk_loop_rv_drvr.ctl -o run.toml
 
 ``python -m pysmsim`` does the same. The output file and format come from
@@ -18,6 +22,10 @@ replaces them; a relative path in the run file is relative to the run
 file's folder, and one given with ``-o`` to the current folder. Without
 ``--format``, the format follows the suffix of the ``-o`` file (``.csv``,
 ``.parquet``, ``.h5`` or ``.hdf5``, ``.col``) when it has one of these.
+
+``pysmsim scenario`` prints its results; with ``-o DIR`` it also writes
+them as CSV files in DIR (``rv.csv``, ``td.csv``, ``fas.csv`` and
+``td_series.csv``; see :mod:`pysmsim.drivers.single` for the columns).
 
 The exit status is 0 on success, 1 when a run file is invalid or the run
 fails, and 2 for wrong command-line arguments.
@@ -32,14 +40,17 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 from pysmsim import __version__
 from pysmsim.drivers.run import run
+from pysmsim.drivers.single import fas_scenario, rv_scenario, td_scenario
 from pysmsim.io.config import ConfigError, RunConfig, load_config
 from pysmsim.io.hdf5 import SERIES_TOLERANCE, write_td_series
 from pysmsim.io.legacy import LegacyFormatError, convert
 from pysmsim.io.results import format_for_path, write_results
 from pysmsim.scenario import OutputFormat, ScenarioGrid
+from pysmsim.spectrum.distance import rjb_to_rrup_depth
 
 __all__ = ["main"]
 
@@ -116,6 +127,62 @@ def _parser() -> argparse.ArgumentParser:
         help="reproduce SMSIM's behaviour where pysmsim differs (see the documentation)",
     )
     run_cmd.add_argument("-q", "--quiet", action="store_true", help="print nothing but errors")
+
+    scenario_cmd = commands.add_parser(
+        "scenario",
+        help="compute every detail of one scenario",
+        description=(
+            "Compute PGD, PGV, PGA, the Arias intensity and the response spectrum of one "
+            "magnitude and distance by random vibration, with their moments, durations and "
+            "peak factors (SMSIM's gm_rv_drvr), using the model, periods and damping of a "
+            "run file. With --td, also their averages over [td] nsims time-domain "
+            "simulations (gm_td_drvr). When the run file gives [scenarios] frequencies, "
+            "also the Fourier spectra and their factors (FAS_DRVR). The magnitudes, "
+            "distances and kappa_0 and stress lists of [scenarios] are not used."
+        ),
+    )
+    scenario_cmd.add_argument("config", type=Path, help="TOML run file")
+    scenario_cmd.add_argument(
+        "-m", "--magnitude", type=float, required=True, help="moment magnitude"
+    )
+    distance = scenario_cmd.add_mutually_exclusive_group(required=True)
+    distance.add_argument("-r", "--rrup", type=float, help="rupture distance Rrup (km)")
+    distance.add_argument(
+        "--rjb",
+        type=float,
+        help="Joyner-Boore distance (km), converted to Rrup as the run file's [scenarios] says",
+    )
+    scenario_cmd.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        metavar="DIR",
+        help="also write the results as CSV files in DIR",
+    )
+    scenario_cmd.add_argument(
+        "--no-rv", action="store_true", help="do not compute the random-vibration results"
+    )
+    scenario_cmd.add_argument(
+        "--td", action="store_true", help="also simulate time series (slower)"
+    )
+    scenario_cmd.add_argument(
+        "--nsims", type=int, metavar="N", help="with --td, the number of simulations ([td] nsims)"
+    )
+    scenario_cmd.add_argument(
+        "--series",
+        type=int,
+        metavar="K",
+        help=(
+            "with --td and -o, write the acceleration, velocity and displacement of "
+            "simulation K (counted from 1) to td_series.csv"
+        ),
+    )
+    scenario_cmd.add_argument(
+        "--fortran-compat",
+        action="store_true",
+        help="reproduce SMSIM's behaviour where pysmsim differs (see the documentation)",
+    )
+    scenario_cmd.add_argument("-q", "--quiet", action="store_true", help="print nothing but errors")
 
     check_cmd = commands.add_parser(
         "check",
@@ -296,6 +363,155 @@ def _run(args: argparse.Namespace) -> int:
     return 0
 
 
+_RV_PRINT = {
+    "measure": "measure",
+    "period": "T (s)",
+    "value": "value",
+    "psv": "PSV (cm/s)",
+    "sd": "SD (cm)",
+    "psa_pga": "PSA/PGA",
+    "dominant_frequency": "f_dom (Hz)",
+    "dur_rms": "Drms (s)",
+    "n_zero_crossings": "n_zero",
+    "rms": "rms",
+    "peak_factor": "peak/rms",
+}
+_TD_PRINT = {
+    "measure": "measure",
+    "period": "T (s)",
+    "mean": "mean",
+    "sem": "sem",
+    "gmean": "gmean",
+    "gfactor": "gfactor",
+}
+_FAS_PRINT = {"f": "f (Hz)", "fds": "FDS (cm-s)", "fvs": "FVS (cm)", "fas": "FAS (cm/s)"}
+_UNITS = {
+    "pgd": "cm",
+    "pgv": "cm/s",
+    "pga": "cm/s^2",
+    "arias": "cm/s",
+    "psa": "cm/s^2",
+    "dur_75_05": "s",
+    "dur_95_05": "s",
+}
+
+
+def _show(table: pd.DataFrame, columns: dict[str, str]) -> str:
+    shown = table[list(columns)].rename(columns=columns)
+    if "measure" in shown:
+        shown["measure"] = [f"{m} ({_UNITS[m]})" for m in table.measure]
+    return shown.to_string(index=False, float_format=lambda x: f"{x:.4g}", na_rep="")
+
+
+def _scenario_heading(terms: dict[str, float], rjb: float | None) -> str:
+    distance = (
+        f"Rrup {terms['rrup']:g} km"
+        if rjb is None
+        else (f"Rjb {rjb:g} km, Rrup {terms['rrup']:.4g} km")
+    )
+    stress = "" if np.isnan(terms["stress"]) else f", stress {terms['stress']:.4g} bars"
+    return (
+        f"M {terms['magnitude']:g}, {distance}: f_ff {terms['f_ff']:.4g} km, "
+        f"Rps {terms['rps']:.4g} km{stress}, fa {terms['fa']:.4g} Hz, "
+        f"fb {terms['fb']:.4g} Hz, kappa {terms['kappa']:.4g} s"
+    )
+
+
+def _scenario(args: argparse.Namespace) -> int:
+    config = _load(args.config)
+    if config is None:
+        return 1
+    grid = config.scenarios
+    params = config.params
+    problem = None
+    if args.series is not None and (not args.td or args.output is None or args.series < 1):
+        problem = "--series needs --td, -o and a simulation number >= 1"
+    elif args.nsims is not None and (not args.td or args.nsims < 1):
+        problem = "--nsims needs --td and a number >= 1"
+    elif args.series is not None and args.series > (args.nsims or params.td.nsims):
+        problem = f"--series {args.series} is more than the number of simulations"
+    elif args.no_rv and not args.td and not grid.frequencies:
+        problem = "--no-rv needs --td or [scenarios] frequencies in the run file"
+    if problem is not None:
+        print(f"pysmsim: {problem}", file=sys.stderr)
+        return 1
+    magnitude = args.magnitude
+    rjb = args.rjb
+    if rjb is not None:
+        h = rjb_to_rrup_depth(
+            magnitude,
+            conversion=grid.rjb_to_rrup,
+            mechanism=grid.mechanism,
+            depth_function=grid.depth_function,
+        )
+        rrup = float(np.hypot(rjb, h))
+    else:
+        rrup = args.rrup
+    if not rrup > 0 or (rjb is not None and rjb < 0):
+        print("pysmsim: the distance must be positive", file=sys.stderr)
+        return 1
+
+    tables: dict[str, pd.DataFrame] = {}
+    report: list[str] = []
+    try:
+        if not args.no_rv:
+            rv = rv_scenario(
+                params,
+                magnitude,
+                rrup,
+                grid.periods,
+                grid.damping,
+                fortran_compat=args.fortran_compat,
+            )
+            tables["rv"] = rv.table()
+            report += ["", "Random vibration:", _show(tables["rv"], _RV_PRINT)]
+        if args.td:
+            nsims = args.nsims or params.td.nsims
+            td = td_scenario(
+                params,
+                magnitude,
+                rrup,
+                grid.periods,
+                grid.damping,
+                nsims=nsims,
+                keep_series=args.series is not None,
+            )
+            tables["td"] = td.table()
+            report += [
+                "",
+                f"Time domain, {nsims} simulations (sem: standard error of the mean; "
+                "gfactor: geometric standard deviation):",
+                _show(tables["td"], _TD_PRINT),
+            ]
+            if args.series is not None:
+                tables["td_series"] = td.series(args.series - 1)
+        if grid.frequencies:
+            tables["fas"] = fas_scenario(
+                params, magnitude, rrup, grid.frequencies, grid.periods, grid.damping
+            )
+            report += ["", "Fourier spectra:", _show(tables["fas"], _FAS_PRINT)]
+        if args.output is not None:
+            args.output.mkdir(parents=True, exist_ok=True)
+            for name, table in tables.items():
+                table.to_csv(args.output / f"{name}.csv", index=False)
+    except (ValueError, RuntimeError, OSError) as err:
+        print(f"pysmsim: {err}", file=sys.stderr)
+        return 1
+    if not args.quiet:
+        first = next(iter(tables.values()))
+        terms = {
+            k: float(first[k].iloc[0])
+            for k in ("magnitude", "rrup", "f_ff", "rps", "stress", "fa", "fb", "kappa")
+        }
+        print(f"pysmsim {__version__}: {args.config}")
+        print(_scenario_heading(terms, rjb))
+        print("\n".join(report))
+        if args.output is not None:
+            files = ", ".join(f"{name}.csv" for name in tables)
+            print(f"\nWrote {files} in {args.output}", file=sys.stderr)
+    return 0
+
+
 def _convert(args: argparse.Namespace) -> int:
     output: Path | None = args.output
     if output is not None and output.exists() and not args.force:
@@ -329,6 +545,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _check(args)
     if args.command == "convert":
         return _convert(args)
+    if args.command == "scenario":
+        return _scenario(args)
     return _run(args)
 
 

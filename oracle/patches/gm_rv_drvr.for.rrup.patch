@@ -1,0 +1,16 @@
+Set rrup, the rupture distance in the /magdist/ common block, to the distance read
+(r). SMSIM leaves it unset (0) in this driver, but the Stafford (2022) spreading
+(gsprd_optimal_stafford) and the Q operator with fr1 = -1 use it, so without
+this the results for stafford.optimal_model.params are wrong. The loop drivers
+set it.
+
+--- a/gm_rv_drvr.for
++++ b/gm_rv_drvr.for
+@@ -316,6 +316,7 @@
+ 
+       write(*, '(a)') ' dist: '
+       read(*, *) r
++      rrup = r
+ 
+       rmod = rmod_calc(r, amag, 
+      :                  iflag_f_ff, nlines_f_ff,

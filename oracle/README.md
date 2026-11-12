@@ -21,7 +21,8 @@ oracle/make_golden.sh /path/to/smsim.2023-03-03_version double
 ```
 
 `build.sh` compiles `tmrsk_loop_rv_drvr`, `fmrsk_loop_fas_drvr`,
-`tmrsk_loop_td_drvr` and the test-only `factor_dump`, `response_dump` and
+`tmrsk_loop_td_drvr`, the single-scenario `gm_rv_drvr`, `gm_td_drvr` and
+`FAS_DRVR`, and the test-only `factor_dump`, `response_dump` and
 `td_dump` (see below) twice:
 
 - `oracle/build/bin/single/`: the code as written, which is mostly single
@@ -111,10 +112,12 @@ synthetic RV cases in `inputs/rv_cases.txt`, which cover the oscillator
 corrections, dampings and fup settings the shipped files do not use, and
 copies the shipped example `.col` file with the same run from this build
 (`run_example.sh`). It runs `td_dump` for the synthetic window and timing
-cases in `inputs/td_cases.txt` and for `ofr.params`. It also
+cases in `inputs/td_cases.txt` and for `ofr.params`, and the
+single-scenario programs `gm_rv_drvr`, `FAS_DRVR` and `gm_td_drvr` for
+every shipped file, answering their questions on stdin. It also
 saves the site and filter lines of each shipped `.params` file, so that the
 tests can rebuild those settings without the distribution. The
-double build takes about 7 minutes with gfortran 13.3, almost all of it in
+double build takes about 5 minutes with gfortran 13.3, almost all of it in
 the time-domain runs; `SKIP_TD=1` leaves those out.
 
 The control files in `inputs/` are copies of the shipped ones in
@@ -138,9 +141,12 @@ its header says why it is needed. `patches/` applies to both builds;
 | Patch | Build | Why |
 | --- | --- | --- |
 | `patches/tmrsk_loop_rv_drvr.for.patch` | both | Removes a trailing comma in a format string, which gfortran rejects (Lahey and Intel accept it). Output is unchanged. |
+| `patches/gm_rv_drvr.for.patch`, `patches/gm_td_drvr.for.patch`, `patches/FAS_DRVR.FOR.patch` | both | Insert the comma gfortran requires after a P descriptor followed by a repeat count (`1p5(...)` becomes `1p,5(...)`). Output is unchanged. |
+| `patches/gm_rv_drvr.for.rrup.patch`, `patches/gm_td_drvr.for.rrup.patch`, `patches/FAS_DRVR.FOR.rrup.patch` | both | **Fix an SMSIM bug**: set `rrup`, the rupture distance in the `/magdist/` common block, to the distance read. These programs leave it at 0, but the Stafford (2022) spreading and the Q operator with `fr1 = -1` use it, so `stafford.optimal_model.params` gives wrong results without the patch (PGA 8% too high at M 6, Rrup 20 km). The loop programs set it. |
 | `patches-double/smsim_subs_for_rv_programs.for.patch` | double | Declares `q` and its saved values as plain `REAL` instead of `REAL(4)`, so they are promoted |
 | `patches-double/td_subs.for.patch` | double | The same for `q`, `rd_calc` and `rs_calc` |
 | `patches-double/rdrvaa.for.patch` | double | The same for the arguments of `rdrvaa` |
+| `patches-double/rv_td_subs.for.patch` | double | The same for `q` in `rv_td_subs.for`, the older subroutine library that `FAS_DRVR` includes |
 
 The double build also passes `-Wno-align-commons`. Promoting REALs to 8 bytes
 means some COMMON blocks need padding. That is safe here because every

@@ -35,7 +35,8 @@ FC=${FC:-gfortran}
 FFLAGS=${FFLAGS:--O2}
 
 # SMSIM programs built for the golden tests
-PROGRAMS="tmrsk_loop_rv_drvr fmrsk_loop_fas_drvr tmrsk_loop_td_drvr"
+# (the source of FAS_DRVR is FAS_DRVR.FOR; the others end in .for)
+PROGRAMS="tmrsk_loop_rv_drvr fmrsk_loop_fas_drvr tmrsk_loop_td_drvr gm_rv_drvr gm_td_drvr FAS_DRVR"
 # Test-only programs from oracle/programs/
 TEST_PROGRAMS="factor_dump response_dump td_dump"
 
@@ -84,7 +85,9 @@ build() {
     # each program is a single compilation unit.
     for prog in $PROGRAMS $TEST_PROGRAMS; do
         echo "Compiling $prog"
-        (cd "$src_dir" && "$FC" $FFLAGS $extra_flags -o "$bin_dir/$prog" "$prog.for")
+        src="$prog.for"
+        [ -e "$src_dir/$src" ] || src="$prog.FOR"
+        (cd "$src_dir" && "$FC" $FFLAGS $extra_flags -o "$bin_dir/$prog" "$src")
     done
 
     # Record how the binaries were built, for the golden files
