@@ -1,11 +1,11 @@
-"""Converting SMSIM ``.params`` and ``tmrsk_loop_rv_drvr`` ``.ctl`` files to TOML.
+"""Converting SMSIM ``.params`` and loop-driver ``.ctl`` files to TOML.
 
 :func:`read_params` reads an SMSIM parameter file (the format dated
 02/25/21, which SMSIM 2023-03-03 reads) into :class:`~pysmsim.params.Params`,
-:func:`read_rv_loop_ctl` reads a control file of ``tmrsk_loop_rv_drvr``
+:func:`read_loop_ctl` reads a control file of ``tmrsk_loop_rv_drvr``
 (dated 03/03/23, or 01/22/21 as in the example shipped with SMSIM, which
-has no mechanism line), and :func:`convert` turns both into the text of a
-TOML run file::
+has no mechanism line) or of ``tmrsk_loop_td_drvr`` (dated 03/03/23), and
+:func:`convert` turns both into the text of a TOML run file::
 
     from pysmsim.io.legacy import convert
     text, notes = convert("ofr.params", "tmrsk_loop_rv_drvr.ctl")
@@ -98,11 +98,16 @@ from pysmsim.spectrum.stress import HoerlStress, LogLinearStress, Stafford2022St
 __all__ = [
     "CTL_DATES",
     "PARAMS_DATE",
+    "RV_PROGRAM",
+    "TD_PROGRAM",
     "LegacyFormatError",
+    "LoopControl",
     "RVLoopControl",
     "convert",
+    "read_loop_ctl",
     "read_params",
     "read_rv_loop_ctl",
+    "read_td_loop_ctl",
 ]
 
 PARAMS_DATE = "02/25/21"
@@ -113,7 +118,14 @@ CTL_DATES = ("03/03/23", "01/22/21")
 
 03/03/23 is SMSIM 2023-03-03's; 01/22/21 is that of the example shipped
 with it, which has no mechanism line (strike-slip is then assumed).
+``tmrsk_loop_td_drvr`` control files must have 03/03/23.
 """
+
+RV_PROGRAM = "tmrsk_loop_rv_drvr"
+"""The random-vibration loop driver."""
+
+TD_PROGRAM = "tmrsk_loop_td_drvr"
+"""The time-domain loop driver."""
 
 _SOURCE_NUMBERS = dict(enumerate(SOURCE_MODELS.values(), start=1))
 """Source model class of each Fortran ``numsource`` (1 to 13)."""
@@ -193,10 +205,15 @@ class _FortranReader:
         tokens = self._tokens(what)
         return [next(tokens) for _ in range(count)]
 
-    def counted(self, what: str) -> list[float]:
-        """Read ``n`` then ``n`` values in one statement (``read(nu,*) n, (x(i), i=1,n)``)."""
+    def counted(self, what: str, *, allow_none: bool = False) -> list[float]:
+        """Read ``n`` then ``n`` values in one statement (``read(nu,*) n, (x(i), i=1,n)``).
+
+        With ``allow_none``, n <= 0 gives no values (as the Fortran loop).
+        """
         tokens = self._tokens(what)
         count = self._int(next(tokens), f"the number of {what}")
+        if count < 1 and allow_none:
+            return []
         if count < 1:
             raise LegacyFormatError(f"{self._where()}: the number of {what} must be at least 1")
         return [self._float(next(tokens), what) for _ in range(count)]
@@ -604,17 +621,23 @@ def read_params(path: str | Path) -> tuple[Params, list[str]]:
 
 
 @dataclass(frozen=True, slots=True)
-class RVLoopControl:
-    """The scenarios of a ``tmrsk_loop_rv_drvr`` control file.
+class LoopControl:
+    """The scenarios of a ``tmrsk_loop_rv_drvr`` or ``tmrsk_loop_td_drvr`` control file.
 
     ``scenarios`` is the ``[scenarios]`` table of a run file: log-spaced
     values stay ``{start, stop, count}`` tables, as in the control file.
+    ``program`` is :data:`RV_PROGRAM` or :data:`TD_PROGRAM`.
     """
 
     params_file: str
     col_file: str
     scenarios: dict[str, Any]
     notes: list[str] = field(default_factory=list)
+    program: str = RV_PROGRAM
+
+
+RVLoopControl = LoopControl
+"""The former name of :class:`LoopControl`."""
 
 
 def _spaced(reader: _FortranReader, flag: int, what: str) -> Any:
@@ -634,9 +657,10 @@ def _spaced(reader: _FortranReader, flag: int, what: str) -> Any:
     return {"start": first, "stop": last, "count": count}
 
 
-def _read_rv_loop_ctl(reader: _FortranReader) -> RVLoopControl:
+def _read_loop_ctl(reader: _FortranReader, program: str) -> LoopControl:
     notes = reader.notes
-    date = _check_date(reader, CTL_DATES, "control file")
+    td = program == TD_PROGRAM
+    date = _check_date(reader, CTL_DATES[:1] if td else CTL_DATES, f"{program} control file")
     reader.skipcmnt()
     reader.line()  # summary file
     reader.skipcmnt()
@@ -651,16 +675,31 @@ def _read_rv_loop_ctl(reader: _FortranReader) -> RVLoopControl:
     reader.line()  # column-label tag
     reader.skipcmnt()
     (damping,) = reader.floats(1, "the damping")
-    reader.skipcmnt()
-    reader.line()  # loop order: pysmsim's is fixed (stress, kappa_0, magnitude, distance)
+    if not td:
+        reader.skipcmnt()
+        reader.line()  # loop order: pysmsim's is fixed (stress, kappa_0, magnitude, distance)
     reader.skipcmnt()
     (iperflag,) = reader.ints(1, "the period flag")
-    reader.skipcmnt()
-    pgv_pga = reader.line()[:1].upper() == "Y"
+    pgv_pga = True  # the TD driver always computes them
+    if not td:
+        reader.skipcmnt()
+        pgv_pga = reader.line()[:1].upper() == "Y"
     scenarios: dict[str, Any] = {}
 
     reader.skipcmnt()
-    if iperflag == 0:
+    if td:
+        scenarios["periods"] = (
+            _spaced(reader, 0, "periods")
+            if iperflag == 0
+            else reader.counted("periods", allow_none=True)
+        )
+        scenarios["pga"] = scenarios["pgv"] = True
+        if isinstance(scenarios["periods"], list) and min(scenarios["periods"], default=1) <= 0:
+            raise LegacyFormatError(
+                f"{reader.name}: the periods of {program} must be above 0 "
+                "(it always computes PGV and PGA)"
+            )
+    elif iperflag == 0:
         scenarios["periods"] = _spaced(reader, 0, "periods")
         scenarios["pga"] = scenarios["pgv"] = pgv_pga
     else:
@@ -745,10 +784,59 @@ def _read_rv_loop_ctl(reader: _FortranReader) -> RVLoopControl:
     for name in ("kappa0", "stress"):
         if name in scenarios:
             table[name] = scenarios[name]
-    return RVLoopControl(params_file=params_file, col_file=col_file, scenarios=table, notes=notes)
+    return LoopControl(
+        params_file=params_file,
+        col_file=col_file,
+        scenarios=table,
+        notes=notes,
+        program=program,
+    )
 
 
-def read_rv_loop_ctl(path: str | Path) -> RVLoopControl:
+def _program(text: str) -> str:
+    """Return the loop driver a control file names in its heading (RV if none)."""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped and stripped[:1] not in ("!", "|"):
+            break  # the date line: the comments above it are the file's heading
+        if TD_PROGRAM in stripped.lower():
+            return TD_PROGRAM
+    return RV_PROGRAM
+
+
+def read_loop_ctl(path: str | Path) -> LoopControl:
+    """Read a control file of SMSIM's ``tmrsk_loop_rv_drvr`` or ``tmrsk_loop_td_drvr``.
+
+    The program is the one the comment lines above the date name
+    (``! Control file for program tmrsk_loop_td_drvr``, as in SMSIM's
+    files); without one, the file is read as one of ``tmrsk_loop_rv_drvr``.
+    The time-domain file has no line for the loop order nor for PGV and
+    PGA, which it always computes.
+
+    Raises
+    ------
+    LegacyFormatError
+        If the file cannot be read, has another date, or holds a value the
+        driver does not accept.
+    """
+    text = _read_text(path)
+    return _read_loop_ctl(_FortranReader(text, Path(path).name), _program(text))
+
+
+def read_td_loop_ctl(path: str | Path) -> LoopControl:
+    """Read a control file of SMSIM's ``tmrsk_loop_td_drvr`` (dated 03/03/23).
+
+    Raises
+    ------
+    LegacyFormatError
+        If the file cannot be read, has another date, or holds a value the
+        driver does not accept.
+    """
+    reader = _FortranReader(_read_text(path), Path(path).name)
+    return _read_loop_ctl(reader, TD_PROGRAM)
+
+
+def read_rv_loop_ctl(path: str | Path) -> LoopControl:
     """Read a control file of SMSIM's ``tmrsk_loop_rv_drvr``.
 
     Parameters
@@ -759,7 +847,7 @@ def read_rv_loop_ctl(path: str | Path) -> RVLoopControl:
 
     Returns
     -------
-    RVLoopControl
+    LoopControl
 
     Raises
     ------
@@ -768,7 +856,7 @@ def read_rv_loop_ctl(path: str | Path) -> RVLoopControl:
         driver does not accept.
     """
     reader = _FortranReader(_read_text(path), Path(path).name)
-    return _read_rv_loop_ctl(reader)
+    return _read_loop_ctl(reader, RV_PROGRAM)
 
 
 # --- The run file ----------------------------------------------------------------------
@@ -788,8 +876,9 @@ def convert(params_path: str | Path, ctl_path: str | Path | None = None) -> tupl
     params_path : str or Path
         The ``.params`` file.
     ctl_path : str or Path, optional
-        A ``tmrsk_loop_rv_drvr`` control file for the ``[scenarios]``
-        section. Without one, the section holds example scenarios to edit.
+        A ``tmrsk_loop_rv_drvr`` or ``tmrsk_loop_td_drvr`` control file
+        for the ``[scenarios]`` section (see :func:`read_loop_ctl`).
+        Without one, the section holds example scenarios to edit.
 
     Returns
     -------
@@ -810,8 +899,14 @@ def convert(params_path: str | Path, ctl_path: str | Path | None = None) -> tupl
             "no control file given: [scenarios] holds example values; edit them before running"
         )
     else:
-        control = read_rv_loop_ctl(ctl_path)
+        control = read_loop_ctl(ctl_path)
         notes.extend(control.notes)
+        if control.program == TD_PROGRAM:
+            notes.append(
+                f"a {TD_PROGRAM} control file: run this file with 'pysmsim run --td' for the "
+                "time-domain simulations ([td] sets them), and add --no-rv to skip the "
+                "random-vibration ones"
+            )
         scenarios = control.scenarios
         col_name = PureWindowsPath(control.col_file).name or "results.col"
         output = {"path": f"{Path(col_name).stem}.csv", "format": "csv"}

@@ -247,6 +247,9 @@ physics.
 - The TD random sequences cannot match. Compare statistics, and use a
   noise-injection test: feed the Fortran noise into Python `acc_ts` and expect
   agreement to about 1e-5.
+  The statistical test allows |z| < 4 with at most 3% of rows beyond 3,
+  because every scenario reuses the same noise (the owner kept this,
+  2026-11-12; observed max 2.9 arithmetic, 3.01 geometric).
 - All shipped `.params` files use source model 1 and spreading options 0 or 7.
   The other branches need synthetic `.params` variants as golden cases.
 - The shipped example `example.tmrsk_loop_rv_drvr/` has a 1,212-row `.col`
@@ -285,30 +288,54 @@ physics.
   - `rv/`: `moments.py` (moments, fup), `peak_factors.py`, `duration.py`
     (durations, oscillator corrections, BT15 tables) and `gm_rv.py`
     (`rv_motion`, one scenario);
-  - `drivers/`: `loop_fas.py`, `loop_rv.py` and `run.py`. Output tables
+  - `td/`: `window.py` (`time_grid`, the box and exponential windows),
+    `noise.py`, `acc_ts.py` (one series, batched over simulations),
+    `intensity.py` (velocity, displacement, Arias, durations),
+    `response.py` (Nigam-Jennings oscillator, a Numba kernel with a NumPy
+    twin) and `gm_td.py` (`td_motion`: nsims simulations of one scenario,
+    and their statistics). The noise comes from `numpy.random.default_rng`
+    seeded with `[td] seed` at every scenario, as SMSIM reseeds; SMSIM's
+    `ran1`/`gasdev` are not reproduced (only the noise-injection test needs
+    the Fortran noise, from `oracle/programs/td_dump.for`);
+  - `drivers/`: `loop_fas.py`, `loop_rv.py`, `loop_td.py` and `run.py`. Output tables
     have one row per scenario with the ground motions as columns, the
     layout the owner prefers: `fas_loop` gives `fas(f)` (cm/s), `rv_loop`
     `pgv` (cm/s), `pga` and `psa(T)` (cm/s^2), with no conversion to g.
     `fas_loop_details` and `rv_loop_details` give one row per scenario and
     frequency or measure, with the intermediate quantities. `run` computes
-    both and returns `RunResult`: three tables sharing their rows
-    (scenarios, fas, rv), as the owner wants for a typical run;
+    both and returns `RunResult`: tables sharing their rows (scenarios,
+    fas, rv, and with `td=True` td and td_details), as the owner wants for
+    a typical run. `td_loop_details` gives every TD measure's mean, std,
+    gmean and gfactor; `td_loop` the means;
   - `io/`: `config.py` (TOML; `params_table` gives the parameter
     sections as a dict), `bt15_tables.py`, `hdf5.py` (`write_hdf5`
     and `read_hdf5`; a group per table, one dataset per column, FAS and PSA
     as 2-D arrays, the run file's TOML in an attribute; the owner kept one
     dataset per column rather than structured arrays) and `results.py`
-    (`write_results` for csv, parquet, hdf5 and SMSIM's `.col` layout);
-  - `cli.py`: `pysmsim run` and `pysmsim check` (also `python -m
-    pysmsim`). `[scenarios] frequencies` in the run file adds the FAS to a
+    (`write_results` for csv, parquet, hdf5 and SMSIM's `.col` layout;
+    TD columns get the prefix `td_` in csv and parquet, and `/td/<stat>/<measure>`
+    in HDF5; `.col` holds RV only). `write_td_series` adds `/td/series`:
+    `times` (0 to the longest npts; attributes dt, tolerance, and per
+    scenario nstart, nstop, first, last, npts) and `acceleration` (nsims,
+    ns, nscenarios). The owner chose (2026-11-12) the whole series in
+    float32 by default; a tolerance > 0 stores each scenario only from
+    first to last, where it exceeds tolerance times its peak, NaN
+    (unwritten chunks) elsewhere (the FFT leaves series nonzero before
+    nstart and after nstop). Integers ×1000 were rejected: a fixed step of
+    0.001 cm/s² ruins weak motions. It
+    re-simulates scenario by scenario (same seed) and writes as it goes;
+  - `cli.py`: `pysmsim run` (`--td` adds the TD simulations, `--no-rv`
+    drops RV) and `pysmsim check` (also `python -m pysmsim`).
+    `[scenarios] frequencies` in the run file adds the FAS to a
     run. A grid may have at most 1,000 periods and 1,000 frequencies (the
     owner's limit, so that a run file cannot exhaust memory; checked before
     `{start, stop, count}` is expanded). Output paths in a run file are
     not restricted (the owner accepted that);
   - `io/legacy.py` and `pysmsim convert PARAMS [CTL] [-o run.toml]`:
     convert a `.params` file (dated 02/25/21) and a `tmrsk_loop_rv_drvr`
-    control file (03/03/23, or 01/22/21 without the mechanism line) into a
-    run file. The reader copies `skipcmnt` and Fortran list-directed input
+    control file (03/03/23, or 01/22/21 without the mechanism line) or a
+    `tmrsk_loop_td_drvr` one (03/03/23; no loop-order or PGV/PGA lines,
+    recognised by the program named in its heading) into a run file. The reader copies `skipcmnt` and Fortran list-directed input
     (continuation lines, `n*v`, `d` exponents, a count and its list in one
     statement). Where SMSIM would behave differently it adds notes, printed
     and written at the top of the run file. Without a control file the
@@ -323,7 +350,8 @@ physics.
 - `oracle/`:
   - `shims/`: the gfortran date/time replacement;
   - `inputs/`: the control files for the golden runs;
-  - `programs/`: test-only Fortran programs, such as `factor_dump`;
+  - `programs/`: test-only Fortran programs (`factor_dump`,
+    `response_dump`, `td_dump`);
   - `build/`: build output, which Git ignores.
 - `notebooks/`: exploration notebooks.
 - `examples/`: example run TOML files.

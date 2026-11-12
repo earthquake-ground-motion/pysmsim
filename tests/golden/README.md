@@ -37,6 +37,7 @@ oscillator corrections for WNA and ENA. The control files in
 | `site/` | `factor_dump` | 10 synthetic site and filter cases (below); M 4, 6, 8; Rrup 20 km; 41 frequencies, 0.01-100 Hz | 41 (one file per case and M) |
 | `site_lines/` | none | The crustal-amplification, diminution, low-cut and high-cut lines of each shipped `.params` file, copied without comments | (one file per params file) |
 | `td/` | `tmrsk_loop_td_drvr` | M 4, 6, 8; Rjb 5, 20, 100 km; PGV, PGA and PSA at 0.01, 0.1, 0.2, 1, 2 s (5% damping); 800 simulations | 63 |
+| `td_series/` | `td_dump` | One simulation with its white noise: 6 synthetic window and timing cases (below) at M 5, Rrup 10 km and M 7, Rrup 50 km, and `ofr.params` at M 6, Rrup 20 km; gzipped | one per point of the series (one file per case, M and Rrup) |
 
 The `source/` cases cover the source models and stress models that the
 shipped params files do not use. Each is `ofr.params` with the source-shape,
@@ -72,6 +73,20 @@ SMSIM's spectral moments carry its integration error (a few 1e-4), which
 narrow-band oscillators amplify, so a few RV rows differ from pysmsim by
 more than 1e-3; `test_rv_golden.py` explains the tolerances.
 
+The `td_series/` files let the tests feed SMSIM's own noise to pysmsim, so
+that one time-domain series can be compared point by point. Each starts with
+`! key = value` lines: the scenario, the source and path durations, the
+time grid (`nstart` and `nstop` are 1-based, `npw2` is the number of
+points), the window's `te`, PGA, PGV, PGD, the integral of the squared
+acceleration, the indices at 5, 75 and 95% of it, and the oscillator
+displacement `rd` at 0.01, 0.1, 0.2, 1 and 2 s (5% damping). Then each row
+gives the noise and the acceleration (cm/s^2) at one point; the noise is 0
+outside the window. The cases (`oracle/inputs/td_cases.txt`) are
+`ofr.params` with the low-cut, window and timing lines replaced: the
+exponential window with Gaussian and uniform noise and with a longer
+window, the box window with and without tapers, and a low-cut filter whose
+pad is longer than `tshift`.
+
 The loop programs convert Rjb to Rrup with the CY14 Ztor relation for a
 strike-slip fault (case 2 in the control files).
 
@@ -92,5 +107,7 @@ strike-slip fault (case 2 in the control files).
   the `sd_am_sdev` column gives the standard deviation of the 800 simulated
   oscillator displacements (divide by the square root of 800 for the
   standard error of the mean); it is a sentinel in the PGV and PGA rows.
+  The `td_series/` files remove the randomness for one simulation: given
+  their noise, pysmsim gives the same series to about 1e-10.
 - **Reproducible.** Running `make_golden.sh` twice with the same build gives
   identical files.

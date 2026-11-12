@@ -41,7 +41,12 @@
 # oracle/inputs/rv_cases.txt (ofr.params with the diminution and RV lines
 # replaced, and the damping of the control file), saved as
 # rv_cases/<case>.col. And example/: the shipped example .col file and the
-# same run with this build (oracle/run_example.sh).
+# same run with this build (oracle/run_example.sh). And td_series/: td_dump
+# (the noise and acceleration of one time-domain simulation) for each
+# synthetic case in oracle/inputs/td_cases.txt (ofr.params with the
+# low-cut, window and timing lines replaced) at M 5, Rrup 10 km and M 7,
+# Rrup 50 km, and for ofr.params as shipped at M 6, Rrup 20 km, saved
+# gzipped as td_series/<case>.M<m>.R<rrup>.txt.gz.
 # The control files take k0 and stress from the params file; their headers
 # list the magnitudes, distances, periods and frequencies.
 #
@@ -66,7 +71,8 @@ RUN_DIR="$ORACLE_DIR/build/golden/$PRECISION"
 OUT_DIR=${3:-"$ORACLE_DIR/../tests/golden/$PRECISION"}
 SKIP_TD=${SKIP_TD:-0}
 
-for prog in tmrsk_loop_rv_drvr fmrsk_loop_fas_drvr tmrsk_loop_td_drvr factor_dump response_dump; do
+for prog in tmrsk_loop_rv_drvr fmrsk_loop_fas_drvr tmrsk_loop_td_drvr factor_dump response_dump \
+    td_dump; do
     if [ ! -x "$BIN_DIR/$prog" ]; then
         echo "error: $BIN_DIR/$prog not found; run oracle/build.sh first" >&2
         exit 1
@@ -79,10 +85,10 @@ mkdir -p "$OUT_DIR"
 OUT_DIR=$(cd "$OUT_DIR" && pwd)
 rm -rf "$OUT_DIR/rv" "$OUT_DIR/fas" "$OUT_DIR/td" "$OUT_DIR/factors" "$OUT_DIR/source" \
     "$OUT_DIR/path" "$OUT_DIR/site" "$OUT_DIR/site_lines" "$OUT_DIR/response" \
-    "$OUT_DIR/rv_cases" "$OUT_DIR/example"
+    "$OUT_DIR/rv_cases" "$OUT_DIR/example" "$OUT_DIR/td_series"
 mkdir -p "$OUT_DIR/rv" "$OUT_DIR/fas" "$OUT_DIR/factors" "$OUT_DIR/source" "$OUT_DIR/path" \
     "$OUT_DIR/site" "$OUT_DIR/site_lines" "$OUT_DIR/response" "$OUT_DIR/rv_cases" \
-    "$OUT_DIR/example"
+    "$OUT_DIR/example" "$OUT_DIR/td_series"
 [ "$SKIP_TD" = 1 ] || mkdir -p "$OUT_DIR/td"
 
 # prepare <dir>: params files with bare .pars file names (they are written
@@ -265,6 +271,34 @@ while IFS='|' read -r name dimin rvline damping; do
     (cd "$dir" && echo "$name.ctl" | "$BIN_DIR/tmrsk_loop_rv_drvr" > "$name.stdout.txt" 2>&1)
     cp "$dir/$name.col" "$OUT_DIR/rv_cases/$name.col"
 done
+
+# Synthetic time-domain cases: replace the low-cut line (the 30th value
+# line), the window line (35th) and the timing line (36th) of ofr.params,
+# then write one simulation of each with td_dump. gzip -n leaves the time
+# out of the file, so that the files are reproducible.
+dir="$RUN_DIR/td_series"
+prepare "$dir"
+grep -v '^ *#' "$ORACLE_DIR/inputs/td_cases.txt" | grep -v '^ *$' |
+while IFS='|' read -r name lowcut window timing; do
+    name=$(echo "$name" | tr -d ' ')
+    echo "td_series: $name"
+    awk -v lowcut="$lowcut" -v window="$window" -v timing="$timing" '
+        /^ *!/ { print; next }
+        { n++ }
+        n == 30 { print " " lowcut; next }
+        n == 35 { print " " window; next }
+        n == 36 { print " " timing; next }
+        { print }' "$dir/ofr.params" > "$dir/$name.params"
+    for mr in "5.0 10.0" "7.0 50.0"; do
+        set -- $mr
+        out="$name.M$1.R$2.txt"
+        (cd "$dir" && "$BIN_DIR/td_dump" "$name.params" "$1" "$2" "$out" > /dev/null)
+        gzip -n -c "$dir/$out" > "$OUT_DIR/td_series/$out.gz"
+    done
+done
+out="ofr.M6.0.R20.0.txt"
+(cd "$dir" && "$BIN_DIR/td_dump" ofr.params 6.0 20.0 "$out" > /dev/null)
+gzip -n -c "$dir/$out" > "$OUT_DIR/td_series/$out.gz"
 
 # The shipped example of tmrsk_loop_rv_drvr: the reference .col file from
 # the distribution and the same run with this build (oracle/run_example.sh)

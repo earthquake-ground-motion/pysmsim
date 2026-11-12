@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import dataclasses
 import math
 import subprocess
 import sys
 from pathlib import Path
 
+import h5py
 import numpy as np
 import pandas as pd
 import pytest
@@ -15,7 +17,7 @@ from pysmsim import __version__
 from pysmsim.cli import main
 from pysmsim.drivers.run import run
 from pysmsim.io.config import dumps_config, load_config
-from pysmsim.io.hdf5 import read_hdf5
+from pysmsim.io.hdf5 import read_hdf5, read_td_series
 from pysmsim.io.results import (
     COL_SENTINEL,
     format_for_path,
@@ -197,11 +199,59 @@ def test_run_options(config_file: Path, tmp_path: Path, capsys: pytest.CaptureFi
     assert "cannot be used with --no-rv" in capsys.readouterr().err
 
 
+def test_run_td(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = tmp_path / "td.toml"
+    params = dataclasses.replace(
+        CONFIG.params, td=dataclasses.replace(CONFIG.params.td, nsims=3, dt=0.01, tshift=5.0)
+    )
+    grid = dataclasses.replace(GRID, frequencies=(), stress=None)
+    path.write_text(dumps_config(type(CONFIG)(params=params, scenarios=grid, output=CONFIG.output)))
+    out = tmp_path / "td.h5"
+    assert main(["run", str(path), "-o", str(out), "--td", "--no-rv"]) == 0
+    err = capsys.readouterr().err
+    assert "TD (--td): 3 simulations of each scenario, exponential window, dt 0.01 s" in err
+    result = read_hdf5(out)
+    assert result.rv is None and result.td is not None and len(result.td) == 4
+    assert main(["run", str(path), "-o", str(tmp_path / "td.csv"), "--td", "-q"]) == 0
+    assert {"pga", "td_pga", "td_psa(1)"} <= set(pd.read_csv(tmp_path / "td.csv").columns)
+    series = tmp_path / "series.h5"
+    assert main(["run", str(path), "-o", str(series), "--td", "--td-series", "2", "-q"]) == 0
+    assert read_td_series(series).acceleration.shape[0] == 2
+    with h5py.File(series) as h5:  # the defaults: whole series, 32-bit
+        assert h5["td/series/acceleration"].dtype == np.float32
+        assert h5["td/series/times"].attrs["tolerance"] == 0.0
+    args = [
+        "run",
+        str(path),
+        "-o",
+        str(series),
+        "--td",
+        "--td-series",
+        "1",
+        "--series-tolerance",
+        "1e-4",
+        "--series-precision",
+        "64",
+    ]
+    assert main([*args, "-q"]) == 0
+    assert read_td_series(series).tolerance == 1e-4
+    with h5py.File(series) as h5:
+        assert h5["td/series/acceleration"].dtype == np.float64
+    assert read_hdf5(series).td is not None
+    assert main(["run", str(path), "-o", str(series), "--no-rv", "--td-series", "-q"]) == 1
+    assert main(["run", str(path), "-o", str(tmp_path / "s.csv"), "--td-series"]) == 1
+    assert "--td-series needs the hdf5 format" in capsys.readouterr().err
+    assert main(["run", str(path), "-o", str(tmp_path / "x.col"), "--td"]) == 1
+    assert "cannot be used with --no-rv or --td" in capsys.readouterr().err
+    assert main(["check", str(path)]) == 0
+    assert "TD (--td): 3 simulations" in capsys.readouterr().out
+
+
 def test_run_errors(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     no_freq = tmp_path / "no_freq.toml"
     no_freq.write_text(EXAMPLE.read_text().replace("frequencies = {", "# frequencies = {"))
     assert main(["run", str(no_freq), "--no-rv"]) == 1
-    assert "needs [scenarios] frequencies" in capsys.readouterr().err
+    assert "needs --td or [scenarios] frequencies" in capsys.readouterr().err
     bad = tmp_path / "bad.toml"
     bad.write_text("schema_version = 1\n")
     assert main(["run", str(bad)]) == 1

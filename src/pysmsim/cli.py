@@ -8,6 +8,8 @@ results; ``pysmsim check`` validates run files without computing anything;
     pysmsim run run.toml
     pysmsim run run.toml -o results.h5
     pysmsim run run.toml -o results.col --fortran-compat
+    pysmsim run run.toml --td -o results.h5
+    pysmsim run run.toml --td --td-series 10 -o results.h5
     pysmsim convert model.params tmrsk_loop_rv_drvr.ctl -o run.toml
 
 ``python -m pysmsim`` does the same. The output file and format come from
@@ -29,9 +31,12 @@ import time
 from collections.abc import Sequence
 from pathlib import Path
 
+import numpy as np
+
 from pysmsim import __version__
 from pysmsim.drivers.run import run
 from pysmsim.io.config import ConfigError, RunConfig, load_config
+from pysmsim.io.hdf5 import SERIES_TOLERANCE, write_td_series
 from pysmsim.io.legacy import LegacyFormatError, convert
 from pysmsim.io.results import format_for_path, write_results
 from pysmsim.scenario import OutputFormat, ScenarioGrid
@@ -52,7 +57,8 @@ def _parser() -> argparse.ArgumentParser:
         help="compute the scenarios of a run file and write the results",
         description=(
             "Compute the random-vibration peak motions (PGV, PGA, PSA) and, when the run "
-            "file gives [scenarios] frequencies, the Fourier spectra of every scenario."
+            "file gives [scenarios] frequencies, the Fourier spectra of every scenario. "
+            "With --td, also simulate [td] nsims time series of every scenario."
         ),
     )
     run_cmd.add_argument("config", type=Path, help="TOML run file")
@@ -68,7 +74,41 @@ def _parser() -> argparse.ArgumentParser:
     run_cmd.add_argument(
         "--no-rv",
         action="store_true",
-        help="compute only the Fourier spectra, not the peak motions",
+        help="do not compute the random-vibration peak motions",
+    )
+    run_cmd.add_argument(
+        "--td",
+        action="store_true",
+        help="also compute the peak motions from time-domain simulations (slower)",
+    )
+    run_cmd.add_argument(
+        "--td-series",
+        type=int,
+        nargs="?",
+        const=0,
+        metavar="NSIMS",
+        help=(
+            "also write the time-domain acceleration series to the HDF5 output (/td/series): "
+            "the first NSIMS simulations of each scenario, or all of them"
+        ),
+    )
+    run_cmd.add_argument(
+        "--series-tolerance",
+        type=float,
+        default=SERIES_TOLERANCE,
+        metavar="FRACTION",
+        help=(
+            "with --td-series, leave out the start and end of each series below this fraction "
+            f"of its peak (default {SERIES_TOLERANCE:g}: the whole series)"
+        ),
+    )
+    run_cmd.add_argument(
+        "--series-precision",
+        type=int,
+        choices=(32, 64),
+        default=32,
+        metavar="BITS",
+        help="with --td-series, store 32-bit (default) or 64-bit floats",
     )
     run_cmd.add_argument(
         "--fortran-compat",
@@ -90,8 +130,8 @@ def _parser() -> argparse.ArgumentParser:
         help="convert SMSIM input files into a run file",
         description=(
             "Convert an SMSIM parameter file (dated 02/25/21) and, optionally, a control file "
-            "of tmrsk_loop_rv_drvr into a TOML run file. Notes on where SMSIM would behave "
-            "differently are printed and written at the top of the run file."
+            "of tmrsk_loop_rv_drvr or tmrsk_loop_td_drvr into a TOML run file. Notes on where "
+            "SMSIM would behave differently are printed and written at the top of the run file."
         ),
     )
     convert_cmd.add_argument("params", type=Path, help="SMSIM .params file")
@@ -99,7 +139,10 @@ def _parser() -> argparse.ArgumentParser:
         "ctl",
         type=Path,
         nargs="?",
-        help="tmrsk_loop_rv_drvr control file for the scenarios (default: example scenarios)",
+        help=(
+            "tmrsk_loop_rv_drvr or tmrsk_loop_td_drvr control file for the scenarios "
+            "(default: example scenarios)"
+        ),
     )
     convert_cmd.add_argument(
         "-o", "--output", type=Path, help="run file to write (default: print it)"
@@ -119,7 +162,7 @@ def _n_scenarios(grid: ScenarioGrid) -> int:
     return len(grid.magnitudes) * len(grid.distances) * _count(grid.kappa0) * _count(grid.stress)
 
 
-def _summary(config: RunConfig) -> str:
+def _summary(config: RunConfig, td: bool = False) -> str:
     grid = config.scenarios
     params = config.params
     loops = [f"{len(grid.magnitudes)} magnitudes", f"{len(grid.distances)} distances"]
@@ -138,6 +181,13 @@ def _summary(config: RunConfig) -> str:
         f"distances as {grid.distance_metric.value}",
         f"  RV: {', '.join(measures)}",
         f"  FAS: {len(grid.frequencies)} frequencies" if grid.frequencies else "  FAS: none",
+    ]
+    if td:
+        lines.append(
+            f"  TD (--td): {params.td.nsims} simulations of each scenario, "
+            f"{params.td.window.value} window, dt {params.td.dt:g} s"
+        )
+    lines += [
         f"  output: {config.output.path} ({config.output.format.value})",
     ]
     return "\n".join(lines)
@@ -162,7 +212,7 @@ def _check(args: argparse.Namespace) -> int:
             status = 1
             continue
         if not args.quiet:
-            print(f"{path}: OK\n{_summary(config)}")
+            print(f"{path}: OK\n{_summary(config, td=True)}")
     return status
 
 
@@ -187,23 +237,50 @@ def _run(args: argparse.Namespace) -> int:
     if config is None:
         return 1
     path, fmt = _output(args, config)
-    if fmt is OutputFormat.COL and args.no_rv:
+    if fmt is OutputFormat.COL and (args.no_rv or args.td):
         print(
-            "pysmsim: the col format holds peak motions, so it cannot be used with --no-rv",
+            "pysmsim: the col format holds the random-vibration peak motions only, so it "
+            "cannot be used with --no-rv or --td",
+            file=sys.stderr,
+        )
+        return 1
+    if args.td_series is not None and (fmt is not OutputFormat.HDF5 or args.td_series < 0):
+        print(
+            "pysmsim: --td-series needs the hdf5 format and a number of simulations >= 0",
             file=sys.stderr,
         )
         return 1
     grid = config.scenarios
-    if args.no_rv and not grid.frequencies:
-        print("pysmsim: --no-rv needs [scenarios] frequencies in the run file", file=sys.stderr)
+    if args.no_rv and not args.td and not grid.frequencies:
+        print(
+            "pysmsim: --no-rv needs --td or [scenarios] frequencies in the run file",
+            file=sys.stderr,
+        )
         return 1
     if not args.quiet:
-        print(f"pysmsim {__version__}: {args.config}\n{_summary(config)}", file=sys.stderr)
+        summary = _summary(config, td=args.td)
+        print(f"pysmsim {__version__}: {args.config}\n{summary}", file=sys.stderr)
     start = time.perf_counter()
     try:
-        result = run(config.params, grid, rv=not args.no_rv, fortran_compat=args.fortran_compat)
+        result = run(
+            config.params,
+            grid,
+            rv=not args.no_rv,
+            td=args.td,
+            fortran_compat=args.fortran_compat,
+        )
         path.parent.mkdir(parents=True, exist_ok=True)
         write_results(result, path, fmt)
+        if args.td_series is not None:
+            write_td_series(
+                path,
+                config.params,
+                grid,
+                nsims=args.td_series or None,
+                tolerance=args.series_tolerance,
+                dtype=np.float32 if args.series_precision == 32 else np.float64,
+                fortran_compat=args.fortran_compat,
+            )
     except (ValueError, RuntimeError, OSError) as err:
         print(f"pysmsim: {err}", file=sys.stderr)
         return 1
